@@ -1,0 +1,382 @@
+/* BlueUI's tests: screens declared as a game would, driven by keys, clicks
+ * and the mouse; what's said read back from the state and the lines handed
+ * over (a context with no voice: text alone). */
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <threads.h>
+
+#include "blueui/widgets.h"
+
+static int failures = 0;
+
+static void expect(bool ok, const char* what, const char* said) {
+  if (said) printf("%s %s (\"%s\")\n", ok ? "  ok  " : "  FAIL", what, said);
+  else printf("%s %s\n", ok ? "  ok  " : "  FAIL", what);
+  failures += !ok;
+}
+
+static bool starts(const char* s, const char* prefix) { return strncmp(s, prefix, strlen(prefix)) == 0; }
+static bool same(const char* a, const char* b) { return strcmp(a, b) == 0; }
+
+/* ----------------------------------------------------------- a harness */
+
+typedef struct harness harness;
+typedef void (*screen_fn)(harness*);
+
+struct harness {
+  bui_context* ui;
+  bui_theme theme;
+  double time;
+  screen_fn screen;
+  size_t lines; /* lines handed over */
+  /* The screens' state. */
+  int pressed, hit, tab, mode, stop;
+  bool full, filter_on, open, back, cancelled;
+  float strength;
+  int64_t bound;
+};
+
+static void harness_init(harness* h, screen_fn screen) {
+  memset(h, 0, sizeof(*h));
+  const bui_config c = {0, 0.0f, true};
+  h->ui = bui_create(&c);
+  h->theme = bui_default_theme();
+  h->screen = screen;
+  h->pressed = h->hit = -1;
+  h->stop = 2;
+  h->strength = 1.0f;
+}
+
+static void harness_free(harness* h) { bui_destroy(h->ui); }
+
+static void frame_with(harness* h, const bui_key* keys, int n, bui_input in) {
+  for (int k = 0; k < n; ++k) bui_input_key(&in, keys[k]);
+  in.time = h->time += 1.0 / 60.0;
+  bui_begin_frame(h->ui, &in);
+  h->screen(h);
+  bui_end_frame(h->ui);
+  bui_audio a;
+  while (bui_next_audio(h->ui, &a)) {
+    if (a.op != BUI_AUDIO_STOP) ++h->lines;
+    bui_audio_free(&a);
+  }
+}
+
+static bui_input none(void) {
+  bui_input in;
+  bui_input_clear(&in);
+  return in;
+}
+
+static void frame(harness* h) { frame_with(h, NULL, 0, none()); }
+static void key(harness* h, bui_key k) { frame_with(h, &k, 1, none()); }
+
+static void click(harness* h, bui_vec2 at) {
+  bui_input in = none();
+  in.mouse = at, in.clicked = true, in.click_at = at;
+  frame_with(h, NULL, 0, in);
+}
+
+static const char* said(const harness* h) { return bui_get_state(h->ui)->last_line; }
+static const char* focused(const harness* h) { return bui_focused_id(h->ui); }
+
+static bui_rect row_at(int k) { return bui_rect_make(10, 50.0f + 20.0f * (float)k, 400, 68.0f + 20.0f * (float)k); }
+
+/* ------------------------------------------------------------ the menu */
+
+static void menu_screen(harness* h) {
+  const bui_hints hints = {"Up and down to move, Enter to choose", "The D-pad to move"};
+  bui_screen(h->ui, "menu", "Main menu", &hints);
+  const char* names[] = {"PLAY", "CHARACTER", "QUIT"};
+  for (int k = 0; k < 3; ++k) {
+    const bui_button_opts o = {k == 0 ? "Play" : NULL, false, false, 0.0f};
+    if (bui_button(h->ui, &h->theme, names[k], names[k], row_at(k), &o)) h->pressed = k;
+  }
+}
+
+static void other_screen(harness* h) { bui_screen(h->ui, "other", "Other", NULL); }
+
+static void menu_again(harness* h) {
+  const bui_hints hints = {"Up and down to move, Enter to choose", NULL};
+  bui_screen(h->ui, "menu", "Main menu", &hints);
+  bui_button(h->ui, &h->theme, "PLAY", "PLAY", row_at(0), NULL);
+}
+
+static void two_buttons(harness* h) {
+  bui_screen(h->ui, "menu", "Main menu", NULL);
+  for (int k = 0; k < 2; ++k)
+    if (bui_button(h->ui, &h->theme, k ? "B" : "A", k ? "SECOND" : "FIRST", row_at(k), NULL)) h->hit = k;
+}
+
+static void menu_tests(void) {
+  printf("The main menu\n");
+  harness h;
+  harness_init(&h, menu_screen);
+  frame(&h);
+  expect(same(said(&h), "Main menu. Up and down to move, Enter to choose"), "come to: its name, its keys", said(&h));
+  key(&h, BUI_KEY_DOWN);
+  expect(bui_navigating(h.ui) && same(focused(&h), "PLAY") && same(said(&h), "Play. Item 1 of 3, button"),
+         "the first key: where the focus is, said", said(&h));
+  key(&h, BUI_KEY_DOWN);
+  expect(same(said(&h), "CHARACTER. Item 2 of 3, button"), "down: the next", said(&h));
+  key(&h, BUI_KEY_UP), key(&h, BUI_KEY_UP);
+  expect(same(focused(&h), "QUIT"), "up past the first: round to the last", NULL);
+  const size_t lines = h.lines;
+  frame(&h), frame(&h);
+  expect(h.lines == lines, "nothing said again while it stays", NULL);
+  key(&h, BUI_KEY_ACTIVATE);
+  expect(h.pressed == 2, "Enter presses the focused one", NULL);
+  const bui_state* s = bui_get_state(h.ui);
+  expect(s->item_count == 3 && same(s->items[2].id, "QUIT") && s->items[2].focused && s->items[2].index == 2 &&
+             same(s->screen, "menu") && same(s->focused, "QUIT"),
+         "the state: its items, the focus", NULL);
+  size_t count = 0;
+  bui_get_geometry(h.ui, &count);
+  expect(count > 0, "the geometry: its rectangles", NULL);
+  /* Back to it later: its name, not its keys again. */
+  h.screen = other_screen;
+  frame(&h);
+  h.screen = menu_again;
+  frame(&h);
+  expect(starts(said(&h), "Main menu. PLAY. Item 1 of 1"), "its keys said once", said(&h));
+  harness_free(&h);
+
+  /* The mouse over an item: said; clicked: pressed. */
+  harness m;
+  harness_init(&m, two_buttons);
+  frame(&m);
+  bui_input over = none();
+  over.mouse = bui_rect_center(row_at(1));
+  frame_with(&m, NULL, 0, over);
+  expect(same(said(&m), "SECOND. Item 2 of 2, button"), "the mouse over one: it's said", said(&m));
+  click(&m, bui_rect_center(row_at(0)));
+  expect(m.hit == 0, "clicked: pressed", NULL);
+  harness_free(&m);
+}
+
+/* ------------------------------------------------------- the settings */
+
+static void percent(float v, char* out, size_t size, void* user) {
+  (void)user;
+  snprintf(out, size, "%d%%", (int)(v * 100 + 0.5f));
+}
+
+static void settings_screen(harness* h) {
+  bui_context* ui = h->ui;
+  const bui_theme* t = &h->theme;
+  const bui_hints hints = {"Tab for the next tab", NULL};
+  bui_screen(ui, "settings", "Settings", &hints);
+  const char* tabs[] = {"Audio", "Visual"};
+  bui_tab_bar(ui, t, "tabs", bui_rect_make(10, 20, 600, 40), tabs, 2, &h->tab, 0.0f);
+  if (h->tab == 0) {
+    const bui_field filter = {"Filter", "Colors adjusted", NULL, false};
+    bui_toggle_row(ui, t, "filter", row_at(0), &filter, &h->filter_on, NULL, NULL);
+    const bui_field strength = {"Filter strength", "Pick a filter first", NULL, !h->filter_on};
+    bui_slider_row(ui, t, "strength", row_at(1), &strength, &h->strength, 0, 1, 0.05f, percent, NULL, NULL);
+  } else {
+    const bui_field full = {"Fullscreen", "The whole screen", NULL, false}, shadows = {"Shadows", NULL, NULL, false};
+    bui_toggle_row(ui, t, "full", row_at(0), &full, &h->full, NULL, NULL);
+    bui_foldout_row(ui, t, "shadows", row_at(1), &shadows, &h->open);
+    if (h->open) {
+      const bui_field mode = {"Sample mode", NULL, NULL, false}, range = {"Range", NULL, NULL, false};
+      const bui_option modes[] = {{"SINGLE", "1 ray", NULL}, {"4 CORNERS", "4 rays", NULL}};
+      const bui_option stops[] = {{"3.2 M", NULL, NULL}, {"6.4 M", NULL, NULL}, {"12.8 M", NULL, NULL}, {"25.6 M", NULL, NULL}};
+      bui_choice_row(ui, t, "mode", row_at(2), &mode, &h->mode, modes, 2);
+      bui_stops_row(ui, t, "range", row_at(3), &range, &h->stop, stops, 4);
+    }
+  }
+  const bui_button_opts back = {NULL, false, true, 0.0f};
+  if (bui_button(ui, t, "back", "BACK", row_at(6), &back)) h->back = true;
+}
+
+static void settings_tests(void) {
+  printf("A settings screen\n");
+  harness h;
+  harness_init(&h, settings_screen);
+  frame(&h);
+  expect(same(said(&h), "Settings, Audio tab. Tab for the next tab"), "come to: its name and tab, its keys", said(&h));
+  key(&h, BUI_KEY_DOWN), key(&h, BUI_KEY_DOWN);
+  expect(same(said(&h), "Filter strength, 100%. Pick a filter first. Item 2 of 3, slider"), "a slider that's off: why, when it's come to",
+         said(&h));
+  key(&h, BUI_KEY_LEFT);
+  expect(h.strength == 1.0f, "off: not changed", NULL);
+  key(&h, BUI_KEY_UP), key(&h, BUI_KEY_ACTIVATE);
+  expect(h.filter_on && same(said(&h), "Filter, on"), "a toggle pressed: its new state said", said(&h));
+  key(&h, BUI_KEY_DOWN), key(&h, BUI_KEY_LEFT);
+  expect(fabsf(h.strength - 0.95f) < 1e-4f && same(said(&h), "Filter strength, 95%"), "a slider nudged", said(&h));
+  const bui_item_state* f = bui_find(h.ui, "strength");
+  expect(f && same(f->value, "95%") && f->kind == BUI_SLIDER && f->enabled, "the state: its value", NULL);
+  /* Tab: the next tab, its first item. */
+  key(&h, BUI_KEY_NEXT);
+  expect(h.tab == 1 && same(said(&h), "Settings, Visual tab. Fullscreen, off. Item 1 of 3, toggle"),
+         "Tab: the next tab, said with its first item", said(&h));
+  key(&h, BUI_KEY_DOWN), key(&h, BUI_KEY_ACTIVATE);
+  expect(h.open && same(said(&h), "Shadows, expanded"), "a foldout opened", said(&h));
+  key(&h, BUI_KEY_DOWN), key(&h, BUI_KEY_RIGHT);
+  expect(h.mode == 1 && starts(said(&h), "Sample mode, 4 CORNERS"), "a choice turned", said(&h));
+  key(&h, BUI_KEY_DOWN), key(&h, BUI_KEY_RIGHT), key(&h, BUI_KEY_RIGHT);
+  expect(h.stop == 3 && same(said(&h), "Range, 25.6 M"), "a slider's stops: stepped, kept to its last", said(&h));
+  key(&h, BUI_KEY_BACK);
+  expect(h.back, "Back presses its back button", NULL);
+  /* The bumpers, a tab's number. */
+  key(&h, BUI_KEY_TAB_PREV);
+  expect(h.tab == 0, "a bumper: the tab before", NULL);
+  bui_input jump = none();
+  jump.tab_hotkey = 2;
+  frame_with(&h, NULL, 0, jump);
+  expect(h.tab == 1, "its number: that tab", NULL);
+  harness_free(&h);
+}
+
+/* --------------------------------------------------------- scrolling */
+
+static void list_screen(harness* h) {
+  bui_context* ui = h->ui;
+  bui_screen(ui, "list", "List", NULL);
+  const float off = bui_begin_scroll(ui, "rows", bui_rect_make(0, 0, 400, 100), 20.0f * 30);
+  for (int k = 0; k < 30; ++k) {
+    bui_item it = {0};
+    it.rect = bui_rect_make(0, 20.0f * (float)k - off, 400, 20.0f * (float)(k + 1) - off);
+    it.spoken = bui_format(ui, "Row %d", k + 1);
+    bui_declare(ui, bui_format(ui, "r%d", k), &it);
+  }
+  bui_end_scroll(ui);
+}
+
+static void scroll_tests(void) {
+  printf("A scrolled list\n");
+  harness h;
+  harness_init(&h, list_screen);
+  frame(&h);
+  key(&h, BUI_KEY_DOWN);
+  for (int k = 0; k < 9; ++k) key(&h, BUI_KEY_DOWN);
+  frame(&h);
+  const bui_item_state* f = bui_find(h.ui, "r9");
+  expect(same(focused(&h), "r9") && f && f->rect.y1 <= 100.5f && f->shown && bui_scroll_of(h.ui, "rows") > 0.0f,
+         "the focus moved past the view: scrolled to it", NULL);
+  key(&h, BUI_KEY_UP);
+  expect(same(said(&h), "Row 9. Item 9 of 30, button"), "said as it's come to", said(&h));
+  harness_free(&h);
+}
+
+/* --------------------------------------------------------- rebinding */
+
+static void controls_screen(harness* h) {
+  bui_screen(h->ui, "controls", "Controls", NULL);
+  bui_item it = {0};
+  it.rect = row_at(0), it.spoken = "Jump, Space";
+  const bui_captured c = bui_capture(h->ui, "jump", &it, "Press a key for jump. Escape to cancel", 8.0);
+  if (c.has_code) h->bound = c.code;
+  if (c.cancelled) h->cancelled = true;
+}
+
+static void capture_tests(void) {
+  printf("Rebinding\n");
+  harness h;
+  harness_init(&h, controls_screen);
+  frame(&h), key(&h, BUI_KEY_DOWN);
+  key(&h, BUI_KEY_ACTIVATE);
+  expect(bui_capturing(h.ui, "jump") && strstr(said(&h), "Press a key for jump") && same(bui_get_state(h.ui)->capturing, "jump"),
+         "pressed: waiting, said so", said(&h));
+  bui_input press = none();
+  bui_input_pressed(&press, 42);
+  const bui_key down = BUI_KEY_DOWN;
+  frame_with(&h, &down, 1, press);
+  expect(h.bound == 42 && !bui_capturing(h.ui, NULL) && same(focused(&h), "jump"), "the next key taken (not moving the focus)", NULL);
+  key(&h, BUI_KEY_ACTIVATE);
+  key(&h, BUI_KEY_CANCEL_CAPTURE);
+  expect(h.cancelled && same(said(&h), "Cancelled"), "cancelled", said(&h));
+  h.cancelled = false;
+  key(&h, BUI_KEY_ACTIVATE);
+  for (int k = 0; k < 9 * 60; ++k) frame(&h);
+  expect(h.cancelled, "8 seconds and nothing: given up", NULL);
+  harness_free(&h);
+}
+
+/* ------------------------------------------------------------- speech */
+
+static void play_screen(harness* h) {
+  bui_screen(h->ui, "menu", "Main menu", NULL);
+  bui_button(h->ui, &h->theme, "play", "PLAY", row_at(0), NULL);
+}
+
+static void speech_tests(void) {
+  printf("Speech\n");
+  harness h;
+  harness_init(&h, play_screen);
+  bui_announce(h.ui, "Welcome", BUI_SAY_HOLD);
+  frame(&h);
+  expect(same(said(&h), "Welcome"), "held: the screen waits", said(&h));
+  key(&h, BUI_KEY_DOWN);
+  expect(starts(said(&h), "Main menu"), "a key: the screen said after all", said(&h));
+  bui_announce(h.ui, "Saved", BUI_SAY_NORMAL);
+  frame(&h);
+  expect(same(said(&h), "Saved"), "an announcement with the frame's line", said(&h));
+  key(&h, BUI_KEY_TOGGLE_SPEECH);
+  const bui_state* s = bui_get_state(h.ui);
+  expect(!s->speech_enabled && s->speech_toggled && same(said(&h), "Narrator off. Press N to switch it back on"), "switched off: said", said(&h));
+  const size_t lines = h.lines;
+  bui_announce(h.ui, "Unheard", BUI_SAY_NORMAL);
+  frame(&h);
+  expect(h.lines == lines, "off: nothing said", NULL);
+  key(&h, BUI_KEY_TOGGLE_SPEECH);
+  expect(starts(said(&h), "Narrator on. Main menu"), "on: where it is", said(&h));
+  key(&h, BUI_KEY_REPEAT);
+  expect(h.lines == lines + 2, "the last line again", NULL);
+  /* The lines handed over: their text, a stop. */
+  bui_stop_speech(h.ui);
+  bui_say(h.ui, "Hello", true);
+  bui_audio a, b;
+  const bool got = bui_next_audio(h.ui, &a) && bui_next_audio(h.ui, &b);
+  expect(got && a.op == BUI_AUDIO_STOP && b.op == BUI_AUDIO_QUEUE && same(b.text, "Hello") && !b.wav, "handed over: a stop, a line queued",
+         NULL);
+  if (got) bui_audio_free(&a), bui_audio_free(&b);
+  harness_free(&h);
+}
+
+/* -------------------------------------------------------------- voice */
+
+static void voice_tests(void) {
+  printf("The voice\n");
+  bui_context* ui = bui_create(NULL);
+  if (!bui_has_voice(ui)) {
+    printf("  (no voice built in)\n");
+    bui_destroy(ui);
+    return;
+  }
+  bui_audio a;
+  const bool made = bui_synthesize(ui, "Volume, 80%", &a);
+  bool wav = made && a.wav_size == 44 + 2 * a.sample_count && memcmp(a.wav, "RIFF", 4) == 0 && memcmp(a.wav + 8, "WAVE", 4) == 0 &&
+             a.sample_rate == 48000 && a.sample_count > 48000 / 2;
+  int peak = 0;
+  for (size_t i = 0; made && i < a.sample_count; ++i) peak = abs(a.samples[i]) > peak ? abs(a.samples[i]) : peak;
+  expect(wav && fabs(peak / 32767.0 - 0.7) < 0.01, "a line spoken: a WAV at 48 kHz, its loudest 0.7", NULL);
+  if (made) bui_audio_free(&a);
+  /* Said: made on its thread, handed over. */
+  bui_say(ui, "Main menu", false);
+  bool got = false;
+  for (int k = 0; k < 500 && !got; ++k) {
+    got = bui_next_audio(ui, &a);
+    if (!got) {
+      struct timespec t = {0, 10 * 1000 * 1000};
+      thrd_sleep(&t, NULL);
+    }
+  }
+  expect(got && a.op == BUI_AUDIO_PLAY && same(a.text, "Main menu") && a.wav, "said: on its thread, its WAV handed over", NULL);
+  if (got) bui_audio_free(&a);
+  bui_destroy(ui);
+}
+
+int main(void) {
+  menu_tests();
+  settings_tests();
+  scroll_tests();
+  capture_tests();
+  speech_tests();
+  voice_tests();
+  printf(failures ? "%d failed\n" : "all passed\n", failures);
+  return failures ? 1 : 0;
+}
