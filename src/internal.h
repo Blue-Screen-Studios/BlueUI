@@ -73,8 +73,7 @@ typedef struct bui__scroll {
 struct bui_context {
   bui__voice* voice;
   bui_strings strings;
-  bui_color focus_color;
-  float focus_width, focus_gap;
+  bui_theme theme;
   bool speech_on, speech_toggled;
   bui_input in;
   /* The geometry. */

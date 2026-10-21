@@ -9,6 +9,7 @@ Every function takes the context as its first argument unless noted. Strings pas
 
 - [Basic types](#basic-types)
 - [Context](#context)
+- [Theme](#theme)
 - [Input](#input)
 - [Frames and screens](#frames-and-screens)
 - [Items](#items)
@@ -71,6 +72,7 @@ typedef struct bui_config {
   int   sample_rate;   /* audio sample rate; 0 means 48000 */
   float speech_rate;   /* speaking speed; 0 means 1.15, 1.0 is the voice's natural speed */
   bool  no_voice;      /* deliver lines as text only */
+  const bui_theme* theme;  /* the game's look (copied); NULL uses bui_default_theme() */
 } bui_config;
 ```
 
@@ -84,7 +86,9 @@ typedef struct bui_config {
 | `bool bui_has_voice(const bui_context* ui)` | Whether a voice is loaded. False in text-only mode. |
 | `void bui_set_strings(bui_context* ui, const bui_strings* s)` | Replaces BlueUI's own phrases. `NULL` restores the defaults. The pointers are kept, not copied. |
 | `const bui_strings* bui_get_strings(const bui_context* ui)` | The phrases in use. |
-| `void bui_set_focus_style(bui_context* ui, bui_color color, float width, float gap)` | The focus outline's colour, thickness and distance from the item. Default: gold, 2, 2. |
+| `void bui_set_theme(bui_context* ui, const bui_theme* theme)` | Replaces the theme (copied). Applies to everything declared afterwards; the focus outline uses the theme in effect at `bui_end_frame`. `NULL` restores the default. |
+| `const bui_theme* bui_get_theme(const bui_context* ui)` | The theme in effect. |
+| `bui_theme bui_default_theme(void)` | BlueUI's default blue theme. |
 
 ### `bui_strings`
 
@@ -98,6 +102,26 @@ typedef struct bui_strings {
   const char* kinds[BUI_KIND_COUNT];  /* "button", "tab", "toggle", "slider", "selector", "text", "" */
 } bui_strings;
 ```
+
+---
+
+## Theme
+
+`bui_theme`, declared in `<blueui/blueui.h>`. Sizes are in font pixels and multiplied by `pixel`. Colours are linear RGB with straight alpha.
+
+| Fields | Used for |
+|---|---|
+| `pixel` | Screen pixels per font pixel. |
+| `text`, `dim`, `blurb`, `value`, `off` | Labels, secondary text, descriptions, values, disabled text. |
+| `stripe`, `hover`, `rule` | Alternate row stripes, the hovered row, separator rules. |
+| `edge`, `panel`, `title_bar`, `title`, `title_right` | Windows. |
+| `tab_on`, `tab_off`, `tab_hot`, `tab_text`, `tab_text_off` | Tab bars. |
+| `toggle_on`, `toggle_on_hot`, `toggle_off`, `toggle_off_hot`, `toggle_text_on`, `toggle_text_off` | Toggles. |
+| `well`, `arrow`, `arrow_hot`, `choice_text` | Choices and their arrow buttons. |
+| `track`, `fill`, `knob`, `knob_hot`, `knob_off`, `tick` | Sliders and stops. |
+| `button_edge`, `button`, `button_hot`, `button_text`, `button_text_off`, `button_edged` | Buttons, including button rows. |
+| `control_width`, `arrow_width`, `blurb_at` | Form row layout. |
+| `focus`, `focus_width`, `focus_gap` | The focus outline: colour, thickness, distance from the item. |
 
 ---
 
@@ -335,13 +359,12 @@ Font constants: `BUI_GLYPH_W` (5), `BUI_GLYPH_H` (7), `BUI_GLYPH_ADVANCE` (6), `
 
 ## Widgets
 
-Declared in `<blueui/widgets.h>`. See [Widgets](widgets.md) for behaviour and examples.
+Declared in `<blueui/widgets.h>`. See [Widgets](widgets.md) for behaviour and examples. Every widget draws with the context's theme.
 
 ### Types
 
 | Type | Fields |
 |---|---|
-| `bui_theme` | `pixel`; colours `text`, `dim`, `blurb`, `value`, `off`, `stripe`, `hover`, `rule`, `edge`, `panel`, `title_bar`, `title`, `title_right`, `tab_on`, `tab_off`, `tab_hot`, `tab_text`, `tab_text_off`, `toggle_on`, `toggle_on_hot`, `toggle_off`, `toggle_off_hot`, `toggle_text_on`, `toggle_text_off`, `well`, `arrow`, `arrow_hot`, `choice_text`, `track`, `fill`, `knob`, `knob_hot`, `knob_off`, `tick`, `button_edge`, `button`, `button_hot`, `button_text`, `button_text_off`; `button_edged`; `control_width`, `arrow_width`, `blurb_at` (font pixels). |
 | `bui_field` | `name`, `description`, `spoken`, `disabled`. |
 | `bui_option` | `shown`, `description`, `spoken`. |
 | `bui_button_opts` | `spoken`, `disabled`, `back`, `pixel`. |
@@ -353,18 +376,17 @@ Declared in `<blueui/widgets.h>`. See [Widgets](widgets.md) for behaviour and ex
 
 | Function | Returns true when |
 |---|---|
-| `bui_theme bui_default_theme(void)` | — |
-| `void bui_label(ui, theme, text, x, y, color, shadow, pixel)` | — |
-| `void bui_centered(ui, theme, rect, text, color, pixel)` | — |
-| `void bui_window(ui, theme, rect, title, right)` | — |
-| `bool bui_button(ui, theme, id, text, rect, opts)` | Pressed. |
-| `bool bui_tab_bar(ui, theme, id, area, names, count, current, min_width)` | A different tab was chosen. |
-| `bui_row_parts bui_row_layout(theme, row)` | — |
-| `bool bui_toggle_row(ui, theme, id, row, field, on, on_text, off_text)` | Flipped. |
-| `bool bui_toggle_row_ex(ui, theme, id, row, field, on, off_option, on_option)` | Flipped. |
-| `bool bui_choice_row(ui, theme, id, row, field, index, options, count)` | Changed. |
-| `bool bui_slider_row(ui, theme, id, row, field, value, lo, hi, step, shown, spoken, user)` | Changed. |
-| `bool bui_stops_row(ui, theme, id, row, field, stop, stops, count)` | Changed. |
-| `bool bui_button_row(ui, theme, id, row, field, text)` | Pressed. |
-| `bool bui_foldout_row(ui, theme, id, row, field, open)` | Opened or closed. |
+| `void bui_label(ui, text, x, y, color, shadow, pixel)` | — |
+| `void bui_centered(ui, rect, text, color, pixel)` | — |
+| `void bui_window(ui, rect, title, right)` | — |
+| `bool bui_button(ui, id, text, rect, opts)` | Pressed. |
+| `bool bui_tab_bar(ui, id, area, names, count, current, min_width)` | A different tab was chosen. |
+| `bui_row_parts bui_row_layout(const bui_theme* theme, bui_rect row)` | — |
+| `bool bui_toggle_row(ui, id, row, field, on, on_text, off_text)` | Flipped. |
+| `bool bui_toggle_row_ex(ui, id, row, field, on, off_option, on_option)` | Flipped. |
+| `bool bui_choice_row(ui, id, row, field, index, options, count)` | Changed. |
+| `bool bui_slider_row(ui, id, row, field, value, lo, hi, step, shown, spoken, user)` | Changed. |
+| `bool bui_stops_row(ui, id, row, field, stop, stops, count)` | Changed. |
+| `bool bui_button_row(ui, id, row, field, text)` | Pressed. |
+| `bool bui_foldout_row(ui, id, row, field, open)` | Opened or closed. |
 | `bui_captured bui_capture(ui, id, item, prompt, seconds)` | — |

@@ -28,7 +28,6 @@ typedef void (*screen_fn)(harness*);
 
 struct harness {
   bui_context* ui;
-  bui_theme theme;
   double time;
   screen_fn screen;
   size_t lines; /* lines handed over */
@@ -43,7 +42,6 @@ static void harness_init(harness* h, screen_fn screen) {
   memset(h, 0, sizeof(*h));
   const bui_config c = {0, 0.0f, true};
   h->ui = bui_create(&c);
-  h->theme = bui_default_theme();
   h->screen = screen;
   h->pressed = h->hit = -1;
   h->stop = 2;
@@ -93,7 +91,7 @@ static void menu_screen(harness* h) {
   const char* names[] = {"PLAY", "CHARACTER", "QUIT"};
   for (int k = 0; k < 3; ++k) {
     const bui_button_opts o = {k == 0 ? "Play" : NULL, false, false, 0.0f};
-    if (bui_button(h->ui, &h->theme, names[k], names[k], row_at(k), &o)) h->pressed = k;
+    if (bui_button(h->ui, names[k], names[k], row_at(k), &o)) h->pressed = k;
   }
 }
 
@@ -102,13 +100,13 @@ static void other_screen(harness* h) { bui_screen(h->ui, "other", "Other", NULL)
 static void menu_again(harness* h) {
   const bui_hints hints = {"Up and down to move, Enter to choose", NULL};
   bui_screen(h->ui, "menu", "Main menu", &hints);
-  bui_button(h->ui, &h->theme, "PLAY", "PLAY", row_at(0), NULL);
+  bui_button(h->ui, "PLAY", "PLAY", row_at(0), NULL);
 }
 
 static void two_buttons(harness* h) {
   bui_screen(h->ui, "menu", "Main menu", NULL);
   for (int k = 0; k < 2; ++k)
-    if (bui_button(h->ui, &h->theme, k ? "B" : "A", k ? "SECOND" : "FIRST", row_at(k), NULL)) h->hit = k;
+    if (bui_button(h->ui, k ? "B" : "A", k ? "SECOND" : "FIRST", row_at(k), NULL)) h->hit = k;
 }
 
 static void menu_tests(void) {
@@ -166,30 +164,29 @@ static void percent(float v, char* out, size_t size, void* user) {
 
 static void settings_screen(harness* h) {
   bui_context* ui = h->ui;
-  const bui_theme* t = &h->theme;
   const bui_hints hints = {"Tab for the next tab", NULL};
   bui_screen(ui, "settings", "Settings", &hints);
   const char* tabs[] = {"Audio", "Visual"};
-  bui_tab_bar(ui, t, "tabs", bui_rect_make(10, 20, 600, 40), tabs, 2, &h->tab, 0.0f);
+  bui_tab_bar(ui, "tabs", bui_rect_make(10, 20, 600, 40), tabs, 2, &h->tab, 0.0f);
   if (h->tab == 0) {
     const bui_field filter = {"Filter", "Colors adjusted", NULL, false};
-    bui_toggle_row(ui, t, "filter", row_at(0), &filter, &h->filter_on, NULL, NULL);
+    bui_toggle_row(ui, "filter", row_at(0), &filter, &h->filter_on, NULL, NULL);
     const bui_field strength = {"Filter strength", "Pick a filter first", NULL, !h->filter_on};
-    bui_slider_row(ui, t, "strength", row_at(1), &strength, &h->strength, 0, 1, 0.05f, percent, NULL, NULL);
+    bui_slider_row(ui, "strength", row_at(1), &strength, &h->strength, 0, 1, 0.05f, percent, NULL, NULL);
   } else {
     const bui_field full = {"Fullscreen", "The whole screen", NULL, false}, shadows = {"Shadows", NULL, NULL, false};
-    bui_toggle_row(ui, t, "full", row_at(0), &full, &h->full, NULL, NULL);
-    bui_foldout_row(ui, t, "shadows", row_at(1), &shadows, &h->open);
+    bui_toggle_row(ui, "full", row_at(0), &full, &h->full, NULL, NULL);
+    bui_foldout_row(ui, "shadows", row_at(1), &shadows, &h->open);
     if (h->open) {
       const bui_field mode = {"Sample mode", NULL, NULL, false}, range = {"Range", NULL, NULL, false};
       const bui_option modes[] = {{"SINGLE", "1 ray", NULL}, {"4 CORNERS", "4 rays", NULL}};
       const bui_option stops[] = {{"3.2 M", NULL, NULL}, {"6.4 M", NULL, NULL}, {"12.8 M", NULL, NULL}, {"25.6 M", NULL, NULL}};
-      bui_choice_row(ui, t, "mode", row_at(2), &mode, &h->mode, modes, 2);
-      bui_stops_row(ui, t, "range", row_at(3), &range, &h->stop, stops, 4);
+      bui_choice_row(ui, "mode", row_at(2), &mode, &h->mode, modes, 2);
+      bui_stops_row(ui, "range", row_at(3), &range, &h->stop, stops, 4);
     }
   }
   const bui_button_opts back = {NULL, false, true, 0.0f};
-  if (bui_button(ui, t, "back", "BACK", row_at(6), &back)) h->back = true;
+  if (bui_button(ui, "back", "BACK", row_at(6), &back)) h->back = true;
 }
 
 static void settings_tests(void) {
@@ -300,7 +297,7 @@ static void capture_tests(void) {
 
 static void play_screen(harness* h) {
   bui_screen(h->ui, "menu", "Main menu", NULL);
-  bui_button(h->ui, &h->theme, "play", "PLAY", row_at(0), NULL);
+  bui_button(h->ui, "play", "PLAY", row_at(0), NULL);
 }
 
 static void speech_tests(void) {
@@ -334,6 +331,36 @@ static void speech_tests(void) {
   expect(got && a.op == BUI_AUDIO_STOP && b.op == BUI_AUDIO_QUEUE && same(b.text, "Hello") && !b.wav, "handed over: a stop, a line queued",
          NULL);
   if (got) bui_audio_free(&a), bui_audio_free(&b);
+  harness_free(&h);
+}
+
+/* -------------------------------------------------------------- theme */
+
+static bool has_color(const bui_context* ui, bui_color c) {
+  size_t n = 0;
+  const bui_draw_cmd* d = bui_get_geometry(ui, &n);
+  for (size_t i = 0; i < n; ++i)
+    if (d[i].r == c.r && d[i].g == c.g && d[i].b == c.b && d[i].a == c.a) return true;
+  return false;
+}
+
+static void theme_tests(void) {
+  printf("Themes\n");
+  bui_theme mine = bui_default_theme();
+  mine.button = bui_rgb(0.1f, 0.2f, 0.3f), mine.focus = bui_rgb(0.9f, 0.1f, 0.5f);
+  harness h;
+  harness_init(&h, play_screen);
+  bui_destroy(h.ui);
+  const bui_config c = {0, 0.0f, true, &mine};
+  h.ui = bui_create(&c);
+  frame(&h);
+  expect(has_color(h.ui, mine.button) && bui_get_theme(h.ui)->button.b == 0.3f, "the config's theme: the widgets drawn with it", NULL);
+  key(&h, BUI_KEY_DOWN);
+  expect(has_color(h.ui, mine.focus), "the focus outline in the theme's colour", NULL);
+  bui_set_theme(h.ui, NULL);
+  frame(&h);
+  const bui_theme d = bui_default_theme();
+  expect(!has_color(h.ui, mine.button) && has_color(h.ui, d.button_hot) && has_color(h.ui, d.focus), "bui_set_theme(NULL): the default again", NULL);
   harness_free(&h);
 }
 
@@ -376,6 +403,7 @@ int main(void) {
   scroll_tests();
   capture_tests();
   speech_tests();
+  theme_tests();
   voice_tests();
   printf(failures ? "%d failed\n" : "all passed\n", failures);
   return failures ? 1 : 0;

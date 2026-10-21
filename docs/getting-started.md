@@ -1,26 +1,29 @@
 # Getting started
 
-This guide builds a small two-screen menu and connects BlueUI's three outputs: state, geometry and audio. A complete working version, using SDL3 for the window, renderer and audio, is in [`demo/main.c`](../demo/main.c).
+This guide builds a small two-screen menu and connects BlueUI's three outputs: state, geometry and audio. The [feature tour](../demo/main.c) shows the same wiring with SDL3 for the window, renderer and audio, and exercises every widget.
 
 ## 1. Create a context
 
 ```c
 #include <blueui/widgets.h>
 
+bui_theme theme = bui_default_theme();
+theme.pixel = 3.0f;                /* screen pixels per font pixel */
+
 bui_config config = {0};
 config.sample_rate = 48000;        /* match your mixer; 0 means 48000 */
+config.theme = &theme;             /* copied; NULL uses the default blue theme */
 
 bui_context* ui = bui_create(&config);
 if (!bui_has_voice(ui)) {
   /* Built without Flite, or the voice failed to load. Lines still arrive,
      as text only; see "Speech and audio". */
 }
-
-bui_theme theme = bui_default_theme();
-theme.pixel = 3.0f;                /* screen pixels per font pixel */
 ```
 
-A context holds everything BlueUI remembers between frames: focus, scroll offsets, which hints have been spoken, and the voice. Create one per UI and destroy it with `bui_destroy`.
+A context holds everything BlueUI remembers between frames: focus, scroll offsets, which hints have been spoken, the theme and the voice. Create one per UI and destroy it with `bui_destroy`.
+
+The theme is your game's look: every colour, the size multiplier and the focus outline. Pass it once at creation. To change it later, for example when the window is resized and `pixel` should grow, call `bui_set_theme`. See [Themes](widgets.md#themes).
 
 ## 2. Fill in the input each frame
 
@@ -79,26 +82,26 @@ static void percent(float v, char* out, size_t size, void* user) {
   snprintf(out, size, "%d%%", (int)(v * 100.0f + 0.5f));
 }
 
-static void declare(bui_context* ui, const bui_theme* t) {
+static void declare(bui_context* ui) {
   if (screen == MENU) {
     bui_hints hints = {"Up and down to move, Enter to choose", "D-pad to move, A to choose"};
     bui_screen(ui, "menu", "Main menu", &hints);
-    if (bui_button(ui, t, "settings", "SETTINGS", bui_rect_make(100, 100, 300, 130), NULL)) screen = SETTINGS;
-    if (bui_button(ui, t, "quit", "QUIT", bui_rect_make(100, 140, 300, 170), NULL)) quit_game();
+    if (bui_button(ui, "settings", "SETTINGS", bui_rect_make(100, 100, 300, 130), NULL)) screen = SETTINGS;
+    if (bui_button(ui, "quit", "QUIT", bui_rect_make(100, 140, 300, 170), NULL)) quit_game();
   } else {
     bui_hints hints = {"Left and right to change a setting, Escape to go back", NULL};
     bui_screen(ui, "settings", "Settings", &hints);
 
     bui_field vol = {"Volume", "Everything the game plays"};
-    bui_slider_row(ui, t, "volume", bui_rect_make(40, 60, 600, 90), &vol, &volume, 0.0f, 1.0f, 0.05f, percent, NULL, NULL);
+    bui_slider_row(ui, "volume", bui_rect_make(40, 60, 600, 90), &vol, &volume, 0.0f, 1.0f, 0.05f, percent, NULL, NULL);
 
     bui_field full = {"Fullscreen", "The whole screen, or a window"};
-    if (bui_toggle_row(ui, t, "fullscreen", bui_rect_make(40, 96, 600, 126), &full, &fullscreen, NULL, NULL))
+    if (bui_toggle_row(ui, "fullscreen", bui_rect_make(40, 96, 600, 126), &full, &fullscreen, NULL, NULL))
       apply_fullscreen(fullscreen);
 
     bui_button_opts back = {0};
     back.back = true;                         /* Escape or B also presses it */
-    if (bui_button(ui, t, "back", "BACK", bui_rect_make(40, 200, 160, 230), &back)) screen = MENU;
+    if (bui_button(ui, "back", "BACK", bui_rect_make(40, 200, 160, 230), &back)) screen = MENU;
   }
 }
 ```
@@ -109,7 +112,7 @@ Widgets return `true` when they were pressed or their value changed, so the game
 
 ```c
 bui_begin_frame(ui, &in);
-declare(ui, &theme);
+declare(ui);
 bui_end_frame(ui);
 
 /* Geometry: draw in order, alpha-blended. Colours are linear. */

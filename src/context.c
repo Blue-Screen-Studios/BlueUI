@@ -132,8 +132,7 @@ bui_context* bui_create(const bui_config* config) {
   if (config) c = *config;
   ui->voice = bui__voice_create(&c);
   ui->strings = kStrings;
-  ui->focus_color = bui_rgba(1.0f, 0.86f, 0.2f, 1.0f);
-  ui->focus_width = ui->focus_gap = 2.0f;
+  ui->theme = c.theme ? *c.theme : bui_default_theme();
   ui->speech_on = true;
   bui_input_clear(&ui->in);
   bui_reset(ui);
@@ -196,9 +195,8 @@ bool bui_synthesize(bui_context* ui, const char* text, bui_audio* out) { return 
 void bui_set_strings(bui_context* ui, const bui_strings* s) { ui->strings = s ? *s : kStrings; }
 const bui_strings* bui_get_strings(const bui_context* ui) { return &ui->strings; }
 
-void bui_set_focus_style(bui_context* ui, bui_color color, float width, float gap) {
-  ui->focus_color = color, ui->focus_width = width, ui->focus_gap = gap;
-}
+void bui_set_theme(bui_context* ui, const bui_theme* theme) { ui->theme = theme ? *theme : bui_default_theme(); }
+const bui_theme* bui_get_theme(const bui_context* ui) { return &ui->theme; }
 
 void bui_draw(bui_context* ui, const bui_draw_cmd* cmds, size_t count) {
   ui->draw = grow(ui->draw, &ui->draw_cap, ui->draw_count + count, sizeof(bui_draw_cmd));
@@ -554,11 +552,11 @@ static void focus_line(const bui_context* ui, size_t i, bui__str* out) {
 }
 
 static void outline(bui_context* ui, bui_rect b) {
-  const float w = ui->focus_width, g = ui->focus_gap;
+  const float w = ui->theme.focus_width * ui->theme.pixel, g = ui->theme.focus_gap * ui->theme.pixel;
   const bui_rect o = bui_rect_make(b.x0 - g - w, b.y0 - g - w, b.x1 + g + w, b.y1 + g + w);
   const bui_rect sides[4] = {bui_rect_make(o.x0, o.y0, o.x1, o.y0 + w), bui_rect_make(o.x0, o.y1 - w, o.x1, o.y1),
                              bui_rect_make(o.x0, o.y0, o.x0 + w, o.y1), bui_rect_make(o.x1 - w, o.y0, o.x1, o.y1)};
-  for (int k = 0; k < 4; ++k) bui_fill(ui, sides[k], ui->focus_color);
+  for (int k = 0; k < 4; ++k) bui_fill(ui, sides[k], ui->theme.focus);
 }
 
 static void scroll_to(bui_context* ui, const bui__entry* e) {

@@ -269,12 +269,50 @@ typedef struct bui_strings {
   const char* kinds[BUI_KIND_COUNT];
 } bui_strings;
 
+/* ---------------------------------------------------------------- theme */
+
+/* How everything BlueUI draws looks: one per game, set at creation
+ * (bui_config.theme) or with bui_set_theme. Sizes are in font pixels,
+ * multiplied by `pixel`; colours are linear RGB with straight alpha. Start
+ * from bui_default_theme() and change what you need. */
+typedef struct bui_theme {
+  float pixel;  /* screen pixels per font pixel */
+  /* Text: labels, secondary text, descriptions, values, disabled text. */
+  bui_color text, dim, blurb, value, off;
+  /* Rows: alternate stripes, the hovered row, separator rules. */
+  bui_color stripe, hover, rule;
+  /* Windows: edge, panel, title bar, title, the text at the title bar's right. */
+  bui_color edge, panel, title_bar, title, title_right;
+  /* Tabs: selected, unselected, hovered; their label colours. */
+  bui_color tab_on, tab_off, tab_hot, tab_text, tab_text_off;
+  /* Toggles: on and off faces (and hovered), their label colours. */
+  bui_color toggle_on, toggle_on_hot, toggle_off, toggle_off_hot, toggle_text_on, toggle_text_off;
+  /* Choices: the well behind the value, the arrow buttons, the value. */
+  bui_color well, arrow, arrow_hot, choice_text;
+  /* Sliders: track, filled part, knob (hovered, disabled), stop marks. */
+  bui_color track, fill, knob, knob_hot, knob_off, tick;
+  /* Buttons: edge, face (hovered), label (disabled). */
+  bui_color button_edge, button, button_hot, button_text, button_text_off;
+  bool button_edged;  /* draw the edge around buttons */
+  /* Form rows: the control's width, a choice arrow's width, where descriptions start. */
+  float control_width, arrow_width, blurb_at;
+  /* The focus outline drawn around the focused item while navigating: its
+   * colour, thickness and gap from the item. */
+  bui_color focus;
+  float focus_width, focus_gap;
+} bui_theme;
+
+/* BlueUI's own look: deep blue panels, a bright blue accent, and a warm
+ * high-contrast focus outline. */
+BUI_API bui_theme bui_default_theme(void);
+
 /* -------------------------------------------------------------- context */
 
 typedef struct bui_config {
   int sample_rate BUI_ZERO;       /* the voice's WAVs (0: 48000) */
   float speech_rate BUI_ZERO;     /* how fast it speaks (0: 1.15; 1: the voice's own) */
   bool no_voice BUI_ZERO;         /* lines as text only (tests; a screen reader of the game's) */
+  const bui_theme* theme BUI_ZERO; /* the look (copied; NULL: bui_default_theme()) */
 } bui_config;
 
 typedef struct bui_context bui_context;
@@ -366,8 +404,11 @@ BUI_API const bui_item_state* bui_find(const bui_context* ui, const char* id_or_
 
 BUI_API void bui_set_strings(bui_context* ui, const bui_strings* strings);
 BUI_API const bui_strings* bui_get_strings(const bui_context* ui);
-/* The focus's outline (round the item with it, while navigating). */
-BUI_API void bui_set_focus_style(bui_context* ui, bui_color color, float width, float gap);
+/* The theme widgets draw with (copied). It applies to everything declared
+ * after the call, so a screen can switch themes part-way; the focus outline
+ * uses the theme in effect at bui_end_frame. NULL restores the default. */
+BUI_API void bui_set_theme(bui_context* ui, const bui_theme* theme);
+BUI_API const bui_theme* bui_get_theme(const bui_context* ui);
 
 /* Drawing, into the frame's geometry (in order with the widgets'). */
 BUI_API void bui_draw(bui_context* ui, const bui_draw_cmd* cmds, size_t count);

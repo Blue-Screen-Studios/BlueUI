@@ -9,23 +9,24 @@
 bui_theme bui_default_theme(void) {
   bui_theme t;
   t.pixel = 2.0f;
-  t.text = bui_rgb(0.92f, 0.94f, 0.88f), t.dim = bui_rgb(0.6f, 0.72f, 0.6f), t.blurb = bui_rgb(0.55f, 0.64f, 0.55f);
-  t.value = bui_rgb(0.92f, 0.85f, 0.4f), t.off = bui_rgb(0.4f, 0.46f, 0.4f);
-  t.stripe = bui_rgba(1.0f, 1.0f, 1.0f, 0.04f), t.hover = bui_rgba(0.3f, 0.6f, 0.3f, 0.12f), t.rule = bui_rgb(0.16f, 0.4f, 0.14f);
-  t.edge = bui_rgb(0.38f, 0.5f, 0.3f), t.panel = bui_rgba(0.025f, 0.06f, 0.035f, 0.97f), t.title_bar = bui_rgb(0.09f, 0.26f, 0.1f);
-  t.title = bui_rgb(1.0f, 1.0f, 1.0f), t.title_right = bui_rgb(0.6f, 0.9f, 0.45f);
-  t.tab_on = bui_rgb(0.16f, 0.4f, 0.14f), t.tab_off = bui_rgb(0.06f, 0.12f, 0.06f), t.tab_hot = bui_rgb(0.11f, 0.2f, 0.1f);
-  t.tab_text = bui_rgb(1.0f, 1.0f, 1.0f), t.tab_text_off = bui_rgb(0.62f, 0.75f, 0.6f);
-  t.toggle_on = bui_rgb(0.12f, 0.42f, 0.15f), t.toggle_on_hot = bui_rgb(0.18f, 0.56f, 0.2f), t.toggle_off = bui_rgb(0.2f, 0.22f, 0.2f);
-  t.toggle_off_hot = bui_rgb(0.26f, 0.28f, 0.26f), t.toggle_text_on = bui_rgb(1.0f, 1.0f, 1.0f), t.toggle_text_off = bui_rgb(0.7f, 0.72f, 0.7f);
-  t.well = bui_rgb(0.04f, 0.09f, 0.04f), t.arrow = bui_rgb(0.12f, 0.36f, 0.13f), t.arrow_hot = bui_rgb(0.18f, 0.5f, 0.18f);
-  t.choice_text = bui_rgb(1.0f, 0.95f, 0.8f);
-  t.track = bui_rgb(0.1f, 0.14f, 0.1f), t.fill = bui_rgb(0.3f, 0.7f, 0.22f), t.knob = bui_rgb(0.92f, 0.92f, 0.7f);
-  t.knob_hot = bui_rgb(1.0f, 0.92f, 0.7f), t.knob_off = bui_rgb(0.35f, 0.38f, 0.35f), t.tick = bui_rgb(0.45f, 0.6f, 0.42f);
-  t.button_edge = bui_rgb(0.55f, 0.48f, 0.12f), t.button = bui_rgba(0.06f, 0.14f, 0.06f, 0.95f);
-  t.button_hot = bui_rgba(0.16f, 0.3f, 0.12f, 0.95f), t.button_text = bui_rgb(1.0f, 0.95f, 0.8f), t.button_text_off = bui_rgb(0.5f, 0.5f, 0.5f);
+  t.text = bui_rgb(0.90f, 0.93f, 0.98f), t.dim = bui_rgb(0.55f, 0.65f, 0.80f), t.blurb = bui_rgb(0.50f, 0.58f, 0.72f);
+  t.value = bui_rgb(0.55f, 0.80f, 1.00f), t.off = bui_rgb(0.38f, 0.42f, 0.50f);
+  t.stripe = bui_rgba(1.0f, 1.0f, 1.0f, 0.04f), t.hover = bui_rgba(0.30f, 0.50f, 0.90f, 0.14f), t.rule = bui_rgb(0.15f, 0.30f, 0.60f);
+  t.edge = bui_rgb(0.35f, 0.50f, 0.80f), t.panel = bui_rgba(0.02f, 0.04f, 0.09f, 0.97f), t.title_bar = bui_rgb(0.06f, 0.16f, 0.40f);
+  t.title = bui_rgb(1.0f, 1.0f, 1.0f), t.title_right = bui_rgb(0.55f, 0.80f, 1.00f);
+  t.tab_on = bui_rgb(0.10f, 0.28f, 0.62f), t.tab_off = bui_rgb(0.05f, 0.08f, 0.16f), t.tab_hot = bui_rgb(0.09f, 0.15f, 0.30f);
+  t.tab_text = bui_rgb(1.0f, 1.0f, 1.0f), t.tab_text_off = bui_rgb(0.60f, 0.68f, 0.85f);
+  t.toggle_on = bui_rgb(0.10f, 0.35f, 0.75f), t.toggle_on_hot = bui_rgb(0.16f, 0.45f, 0.90f), t.toggle_off = bui_rgb(0.18f, 0.20f, 0.25f);
+  t.toggle_off_hot = bui_rgb(0.24f, 0.26f, 0.32f), t.toggle_text_on = bui_rgb(1.0f, 1.0f, 1.0f), t.toggle_text_off = bui_rgb(0.68f, 0.70f, 0.76f);
+  t.well = bui_rgb(0.03f, 0.06f, 0.13f), t.arrow = bui_rgb(0.10f, 0.26f, 0.58f), t.arrow_hot = bui_rgb(0.16f, 0.38f, 0.80f);
+  t.choice_text = bui_rgb(0.92f, 0.96f, 1.00f);
+  t.track = bui_rgb(0.08f, 0.11f, 0.18f), t.fill = bui_rgb(0.25f, 0.55f, 1.00f), t.knob = bui_rgb(0.90f, 0.94f, 1.00f);
+  t.knob_hot = bui_rgb(1.0f, 1.0f, 1.0f), t.knob_off = bui_rgb(0.35f, 0.38f, 0.45f), t.tick = bui_rgb(0.40f, 0.50f, 0.70f);
+  t.button_edge = bui_rgb(0.35f, 0.60f, 1.00f), t.button = bui_rgba(0.05f, 0.10f, 0.22f, 0.95f);
+  t.button_hot = bui_rgba(0.10f, 0.22f, 0.45f, 0.95f), t.button_text = bui_rgb(0.95f, 0.97f, 1.00f), t.button_text_off = bui_rgb(0.50f, 0.52f, 0.58f);
   t.button_edged = true;
   t.control_width = 120.0f, t.arrow_width = 11.0f, t.blurb_at = 130.0f;
+  t.focus = bui_rgb(1.0f, 0.86f, 0.2f), t.focus_width = 1.0f, t.focus_gap = 1.0f;
   return t;
 }
 
@@ -46,11 +47,13 @@ static const char* recased(bui_context* ui, const char* s, int (*to)(int)) {
 static const char* upper(bui_context* ui, const char* s) { return recased(ui, s, toupper); }
 static const char* lower(bui_context* ui, const char* s) { return recased(ui, s, tolower); }
 
-void bui_label(bui_context* ui, const bui_theme* t, const char* text, float x, float y, bui_color c, float shadow, float pixel) {
+void bui_label(bui_context* ui, const char* text, float x, float y, bui_color c, float shadow, float pixel) {
+  const bui_theme* t = bui_get_theme(ui);
   bui_text(ui, text, x, y, px(t, pixel), c, shadow);
 }
 
-void bui_centered(bui_context* ui, const bui_theme* t, bui_rect r, const char* text, bui_color c, float pixel) {
+void bui_centered(bui_context* ui, bui_rect r, const char* text, bui_color c, float pixel) {
+  const bui_theme* t = bui_get_theme(ui);
   const float p = px(t, pixel);
   bui_text(ui, text, roundf(0.5f * (r.x0 + r.x1 - width(text, p))), roundf(0.5f * (r.y0 + r.y1 - BUI_GLYPH_H * p)), p, c, 0.0f);
 }
@@ -83,7 +86,8 @@ static const char* row_spoken(bui_context* ui, const bui_field* f, const char* v
 
 /* ------------------------------------------------------------ widgets */
 
-void bui_window(bui_context* ui, const bui_theme* t, bui_rect r, const char* title, const char* right) {
+void bui_window(bui_context* ui, bui_rect r, const char* title, const char* right) {
+  const bui_theme* t = bui_get_theme(ui);
   const float p = t->pixel;
   bui_fill(ui, bui_rect_grow(r, p), t->edge);
   bui_fill(ui, r, t->panel);
@@ -92,7 +96,8 @@ void bui_window(bui_context* ui, const bui_theme* t, bui_rect r, const char* tit
   if (has(right)) bui_text(ui, right, r.x1 - 6.0f * p - width(right, p), r.y0 + 4.0f * p, p, t->title_right, 0.7f);
 }
 
-bool bui_button(bui_context* ui, const bui_theme* t, const char* id, const char* text, bui_rect r, const bui_button_opts* o) {
+bool bui_button(bui_context* ui, const char* id, const char* text, bui_rect r, const bui_button_opts* o) {
+  const bui_theme* t = bui_get_theme(ui);
   const bui_button_opts none = {0};
   if (!o) o = &none;
   bui_item it = {0};
@@ -109,8 +114,9 @@ bool bui_button(bui_context* ui, const bui_theme* t, const char* id, const char*
   return res.activated;
 }
 
-bool bui_tab_bar(bui_context* ui, const bui_theme* t, const char* id, bui_rect area, const char* const* names, int n, int* current,
+bool bui_tab_bar(bui_context* ui, const char* id, bui_rect area, const char* const* names, int n, int* current,
                  float min_width) {
+  const bui_theme* t = bui_get_theme(ui);
   const float p = t->pixel;
   if (n <= 0) return false;
   if (min_width <= 0.0f) min_width = 64.0f;
@@ -132,7 +138,7 @@ bool bui_tab_bar(bui_context* ui, const bui_theme* t, const char* id, bui_rect a
     if (r.activated) *current = k;
     const bool on = k == *current;
     bui_fill(ui, b, on ? t->tab_on : r.hovered ? t->tab_hot : t->tab_off);
-    bui_centered(ui, t, b, shown, on ? t->tab_text : t->tab_text_off, 0.0f);
+    bui_centered(ui, b, shown, on ? t->tab_text : t->tab_text_off, 0.0f);
   }
   bui_fill(ui, bui_rect_make(area.x0, area.y1, area.x1, area.y1 + p), t->tab_on);
   bui_page(ui, names[clampi(*current, 0, n - 1)]);
@@ -149,10 +155,10 @@ bui_row_parts bui_row_layout(const bui_theme* t, bui_rect row) {
   return rp;
 }
 
-bool bui_toggle_row(bui_context* ui, const bui_theme* t, const char* id, bui_rect row, const bui_field* f, bool* on, const char* on_text,
+bool bui_toggle_row(bui_context* ui, const char* id, bui_rect row, const bui_field* f, bool* on, const char* on_text,
                     const char* off_text) {
   const bui_option off = {has(off_text) ? off_text : "OFF", NULL, NULL}, yes = {has(on_text) ? on_text : "ON", NULL, NULL};
-  return bui_toggle_row_ex(ui, t, id, row, f, on, &off, &yes);
+  return bui_toggle_row_ex(ui, id, row, f, on, &off, &yes);
 }
 
 /* A toggle's state: what it means, what's said of it. */
@@ -161,8 +167,9 @@ static const char* toggle_said(bui_context* ui, const bui_field* f, const bui_op
   return has(o->spoken) ? o->spoken : row_spoken(ui, f, lower(ui, o->shown), toggle_described(f, o));
 }
 
-bool bui_toggle_row_ex(bui_context* ui, const bui_theme* t, const char* id, bui_rect row, const bui_field* f, bool* on,
+bool bui_toggle_row_ex(bui_context* ui, const char* id, bui_rect row, const bui_field* f, bool* on,
                        const bui_option* off, const bui_option* on_option) {
+  const bui_theme* t = bui_get_theme(ui);
   const bui_row_parts rp = bui_row_layout(t, row);
   const bui_option* state = *on ? on_option : off;
   bui_item it = {0};
@@ -177,7 +184,7 @@ bool bui_toggle_row_ex(bui_context* ui, const bui_theme* t, const char* id, bui_
   if (!bui_visible(ui, row)) return *on != was;
   const bool hot = !f->disabled && r.hovered;
   bui_fill(ui, rp.control, *on ? (hot ? t->toggle_on_hot : t->toggle_on) : (hot ? t->toggle_off_hot : t->toggle_off));
-  bui_centered(ui, t, rp.control, state->shown, *on ? t->toggle_text_on : t->toggle_text_off, 0.0f);
+  bui_centered(ui, rp.control, state->shown, *on ? t->toggle_text_on : t->toggle_text_off, 0.0f);
   return *on != was;
 }
 
@@ -189,8 +196,9 @@ static const char* choice_said(bui_context* ui, const bui_field* f, const bui_op
   return !has(f->spoken) && !f->disabled && has(d) ? bui_format(ui, "%s. %s", s, d) : s;
 }
 
-bool bui_choice_row(bui_context* ui, const bui_theme* t, const char* id, bui_rect row, const bui_field* f, int* index,
+bool bui_choice_row(bui_context* ui, const char* id, bui_rect row, const bui_field* f, int* index,
                     const bui_option* options, int n) {
+  const bui_theme* t = bui_get_theme(ui);
   if (n <= 0) return false;
   *index = clampi(*index, 0, n - 1);
   const bui_row_parts rp = bui_row_layout(t, row);
@@ -209,9 +217,9 @@ bool bui_choice_row(bui_context* ui, const bui_theme* t, const char* id, bui_rec
   bui_fill(ui, rp.control, t->well);
   bui_fill(ui, rp.prev, bui_rect_contains(rp.prev, mouse) && !f->disabled ? t->arrow_hot : t->arrow);
   bui_fill(ui, rp.next, bui_rect_contains(rp.next, mouse) && !f->disabled ? t->arrow_hot : t->arrow);
-  bui_centered(ui, t, rp.prev, "<", bui_rgb(1, 1, 1), 0.0f);
-  bui_centered(ui, t, rp.next, ">", bui_rgb(1, 1, 1), 0.0f);
-  bui_centered(ui, t, bui_rect_make(rp.prev.x1, rp.control.y0, rp.next.x0, rp.control.y1), o->shown, f->disabled ? t->off : t->choice_text,
+  bui_centered(ui, rp.prev, "<", t->choice_text, 0.0f);
+  bui_centered(ui, rp.next, ">", t->choice_text, 0.0f);
+  bui_centered(ui, bui_rect_make(rp.prev.x1, rp.control.y0, rp.next.x0, rp.control.y1), o->shown, f->disabled ? t->off : t->choice_text,
                0.0f);
   return *index != was;
 }
@@ -246,8 +254,9 @@ static const char* slider_said(bui_context* ui, const bui_field* f, bui_format_f
   return row_spoken(ui, f, slider_shown(ui, shown, v, user), f->description);
 }
 
-bool bui_slider_row(bui_context* ui, const bui_theme* t, const char* id, bui_rect row, const bui_field* f, float* value, float lo, float hi,
+bool bui_slider_row(bui_context* ui, const char* id, bui_rect row, const bui_field* f, float* value, float lo, float hi,
                     float step, bui_format_fn shown, bui_format_fn spoken, void* user) {
+  const bui_theme* t = bui_get_theme(ui);
   const bui_row_parts rp = bui_row_layout(t, row);
   bui_item it = {0};
   it.kind = BUI_SLIDER, it.rect = row, it.track = rp.control, it.disabled = f->disabled;
@@ -272,8 +281,9 @@ static const char* stop_said(bui_context* ui, const bui_field* f, const bui_opti
   return has(o->spoken) ? o->spoken : row_spoken(ui, f, o->shown, stop_described(f, o));
 }
 
-bool bui_stops_row(bui_context* ui, const bui_theme* t, const char* id, bui_rect row, const bui_field* f, int* stop, const bui_option* stops,
+bool bui_stops_row(bui_context* ui, const char* id, bui_rect row, const bui_field* f, int* stop, const bui_option* stops,
                    int n) {
+  const bui_theme* t = bui_get_theme(ui);
   if (n <= 0) return false;
   *stop = clampi(*stop, 0, n - 1);
   const bui_row_parts rp = bui_row_layout(t, row);
@@ -291,7 +301,8 @@ bool bui_stops_row(bui_context* ui, const bui_theme* t, const char* id, bui_rect
   return *stop != was;
 }
 
-bool bui_button_row(bui_context* ui, const bui_theme* t, const char* id, bui_rect row, const bui_field* f, const char* text) {
+bool bui_button_row(bui_context* ui, const char* id, bui_rect row, const bui_field* f, const char* text) {
+  const bui_theme* t = bui_get_theme(ui);
   const bui_row_parts rp = bui_row_layout(t, row);
   bui_item it = {0};
   it.kind = BUI_BUTTON, it.rect = row, it.press = rp.control, it.disabled = f->disabled;
@@ -299,8 +310,8 @@ bool bui_button_row(bui_context* ui, const bui_theme* t, const char* id, bui_rec
   const bui_result r = bui_declare(ui, id, &it);
   row_text(ui, t, &rp, f, f->description, NULL, r.hovered);
   if (!bui_visible(ui, row)) return r.activated && !f->disabled;
-  bui_fill(ui, rp.control, r.hovered && !f->disabled ? bui_rgb(0.3f, 0.2f, 0.1f) : bui_rgb(0.22f, 0.15f, 0.1f));
-  bui_centered(ui, t, rp.control, text, bui_rgb(1, 1, 1), 0.0f);
+  bui_fill(ui, rp.control, r.hovered && !f->disabled ? t->button_hot : t->button);
+  bui_centered(ui, rp.control, text, f->disabled ? t->button_text_off : t->button_text, 0.0f);
   return r.activated && !f->disabled;
 }
 
@@ -308,7 +319,8 @@ static const char* foldout_said(bui_context* ui, const bui_field* f, bool open) 
   return has(f->spoken) ? f->spoken : bui_format(ui, "%s%s", bui__s(f->name), open ? ", expanded" : ", collapsed");
 }
 
-bool bui_foldout_row(bui_context* ui, const bui_theme* t, const char* id, bui_rect row, const bui_field* f, bool* open) {
+bool bui_foldout_row(bui_context* ui, const char* id, bui_rect row, const bui_field* f, bool* open) {
+  const bui_theme* t = bui_get_theme(ui);
   const float p = t->pixel;
   bui_item it = {0};
   it.kind = BUI_BUTTON, it.rect = row, it.value = *open ? "open" : "shut", it.spoken = foldout_said(ui, f, *open);

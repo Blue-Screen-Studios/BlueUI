@@ -20,7 +20,7 @@ BlueUI does not own a window, a renderer or an audio device. Each frame the game
 - **Change detection.** When a value changes, by input or by the game's own code, only the new value is spoken.
 - **Platform independent.** The library has no dependency on SDL or any windowing or audio API. The game translates its own events into a plain `bui_input` struct.
 - **Renderer independent.** Output is a flat list of rectangles, optionally textured, with a built-in 5×7 bitmap font.
-- **Themed widgets.** Includes buttons, tab bars, toggles, choices, sliders, stepped sliders, foldouts, rebinding capture and scroll views.
+- **Themed widgets.** Includes buttons, tab bars, toggles, choices, sliders, stepped sliders, foldouts, rebinding capture and scroll views. Each game passes one `bui_theme` (colours, sizes, focus outline) and every widget follows it. The default theme is blue.
 - **Testable.** Menus can be tested by what is said and focused, not by pixel positions. Text-only mode makes tests deterministic.
 - **C11 with a small surface.** A single shared library exporting only `bui_*` symbols, and headers that work from C and C++.
 
@@ -29,8 +29,12 @@ BlueUI does not own a window, a renderer or an audio device. Each frame the game
 ```c
 #include <blueui/widgets.h>
 
-bui_context* ui = bui_create(NULL);           /* 48 kHz voice, default settings */
-bui_theme theme = bui_default_theme();
+bui_theme theme = bui_default_theme();        /* BlueUI's blue look; change any field */
+theme.pixel = 3.0f;
+
+bui_config config = {0};
+config.theme = &theme;                        /* your game's look, set once */
+bui_context* ui = bui_create(&config);        /* 48 kHz voice */
 
 /* Every frame: */
 bui_input in;
@@ -41,8 +45,8 @@ bui_begin_frame(ui, &in);
 
 bui_hints hints = {"Up and down to move, Enter to choose", NULL};
 bui_screen(ui, "menu", "Main menu", &hints);
-if (bui_button(ui, &theme, "play", "PLAY", play_rect, NULL)) start_game();
-if (bui_button(ui, &theme, "quit", "QUIT", quit_rect, NULL)) quit_game();
+if (bui_button(ui, "play", "PLAY", play_rect, NULL)) start_game();
+if (bui_button(ui, "quit", "QUIT", quit_rect, NULL)) quit_game();
 
 bui_end_frame(ui);
 
@@ -77,7 +81,7 @@ Requirements:
 cmake -B build
 cmake --build build
 ctest --test-dir build        # run the test suite
-./build/blueui_demo           # an interactive demo (SDL3)
+./build/blueui_demo           # a tour of every feature (SDL3)
 ```
 
 | Option | Default | Description |
@@ -111,7 +115,7 @@ include/blueui/blueui.h    Core: context, input, state, items, speech, font
 include/blueui/widgets.h   Themed widgets built on the core
 src/                       Implementation
 tests/tests.c              Test suite (CTest)
-demo/main.c                SDL3 demo: input, drawing and audio wired up
+demo/main.c                Feature tour (SDL3): every widget, speech, rebinding and themes
 docs/                      Documentation
 ```
 

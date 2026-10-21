@@ -2,22 +2,47 @@
 
 `blueui/widgets.h` provides themed widgets built on `bui_declare`. Each widget declares its item, applies the frame's input, speaks itself correctly and draws itself. A screen built from them needs no extra accessibility code.
 
-All widgets take the context, a theme, a unique id and a rectangle in pixels. Widgets that change a value take it by pointer, update it in place, and return `true` when it changed. Buttons return `true` when pressed.
+All widgets take the context, a unique id and a rectangle in pixels, and draw with the context's theme. Widgets that change a value take it by pointer, update it in place, and return `true` when it changed. Buttons return `true` when pressed.
 
 ## Themes
 
+A `bui_theme` is a game's whole look: every colour, the size multiplier, and the focus outline. Each game defines its theme once and passes it to BlueUI. Widgets take no styling arguments.
+
 ```c
-bui_theme theme = bui_default_theme();
+bui_theme theme = bui_default_theme();      /* start from BlueUI's blue */
 theme.pixel = 3.0f;                         /* screen pixels per font pixel */
-theme.panel = bui_rgba(0.03f, 0.05f, 0.09f, 0.97f);
+theme.panel = bui_rgba(0.08f, 0.03f, 0.02f, 0.97f);
+theme.fill = bui_rgb(1.0f, 0.45f, 0.15f);
+theme.focus = bui_rgb(0.4f, 0.9f, 1.0f);    /* the focus outline */
+
+bui_config config = {0};
+config.theme = &theme;
+bui_context* ui = bui_create(&config);
 ```
 
-A `bui_theme` holds every colour and the size multiplier. Sizes in the theme, such as `control_width`, `arrow_width` and `blurb_at`, are in font pixels and are multiplied by `pixel`. All colours are linear RGB with straight alpha. Themes are plain values, so copy one and change a few fields for a variant look:
+- **Units.** Sizes in the theme (`control_width`, `arrow_width`, `blurb_at`, `focus_width`, `focus_gap`) are in font pixels and are multiplied by `pixel`.
+- **Colours.** All colours are linear RGB with straight alpha.
+- **Copying.** The theme is copied, so the original can be discarded.
+
+`bui_set_theme(ui, &theme)` replaces the theme at any time, also copying it. It applies to everything declared after the call, so a game can:
+
+- update `pixel` when the window is resized;
+- give each screen its own variant (a shop's colours, a pause menu's);
+- style a single widget differently, then switch back:
 
 ```c
-bui_theme flat = theme;
+bui_theme flat = *bui_get_theme(ui);
 flat.button_edged = false;
+bui_set_theme(ui, &flat);
+bui_button(ui, "back", "BACK", rect, &opts);
+bui_set_theme(ui, &theme);
 ```
+
+The focus outline is drawn at `bui_end_frame` with the theme in effect at that point. `bui_set_theme(ui, NULL)` restores the default.
+
+### The default theme
+
+`bui_default_theme()` is BlueUI's own look: deep navy panels, a bright blue accent for fills and selected tabs, and a warm gold focus outline. Gold stands out clearly against the blues, which helps players with low vision follow the focus. The [feature tour](../demo/main.c) includes three more themes to start from: green, warm red, and high contrast.
 
 ## Drawing helpers
 
@@ -25,9 +50,9 @@ flat.button_edged = false;
 |---|---|
 | `bui_fill(ui, rect, color)` | A solid rectangle. |
 | `bui_text(ui, text, x, y, pixel, color, shadow)` | Text at a position. `shadow > 0` adds a one-font-pixel drop shadow of that opacity. |
-| `bui_label(ui, theme, text, x, y, color, shadow, pixel)` | Text at the theme's pixel size, or `pixel` when non-zero. |
-| `bui_centered(ui, theme, rect, text, color, pixel)` | Text centred in a rectangle. |
-| `bui_window(ui, theme, rect, title, right)` | A panel with an edge, a title bar, a title, and optional text at the right of the title bar. |
+| `bui_label(ui, text, x, y, color, shadow, pixel)` | Text at the theme's pixel size, or `pixel` when non-zero. |
+| `bui_centered(ui, rect, text, color, pixel)` | Text centred in a rectangle. |
+| `bui_window(ui, rect, title, right)` | A panel with an edge, a title bar, a title, and optional text at the right of the title bar. |
 
 ## Buttons
 
@@ -35,7 +60,7 @@ flat.button_edged = false;
 bui_button_opts opts = {0};
 opts.spoken = "Back";        /* spoken text; NULL uses the label */
 opts.back = true;            /* also pressed by BUI_KEY_BACK */
-if (bui_button(ui, &theme, "back", "BACK", rect, &opts)) go_back();
+if (bui_button(ui, "back", "BACK", rect, &opts)) go_back();
 ```
 
 Pass `NULL` for default options. A disabled button (`opts.disabled`) is still reachable and spoken, but cannot be pressed.
@@ -47,7 +72,7 @@ Spoken as: *"Back. Item 3 of 3, button"*.
 ```c
 static const char* tabs[] = {"Audio", "Video", "Controls"};
 static int tab = 0;
-if (bui_tab_bar(ui, &theme, "tabs", bar_rect, tabs, 3, &tab, 0.0f)) reset_scroll();
+if (bui_tab_bar(ui, "tabs", bar_rect, tabs, 3, &tab, 0.0f)) reset_scroll();
 ```
 
 Tabs are laid out left to right along the top of `bar_rect`. Each tab is as wide as its label needs, and at least `min_width` font pixels wide (64 when 0). Labels are shown upper case and numbered, such as "1 AUDIO". The tab bar:
@@ -72,13 +97,13 @@ f.disabled = !filter_on;                  /* reachable and spoken, not changeabl
 
 When a row is disabled and has a description, the description is spoken as the reason. For example: *"Filter strength, 100%. Pick a filter first"*.
 
-`bui_row_layout(theme, row)` returns the rectangles a row uses (`row`, `control`, `prev`, `next`). Use it to align custom rows or to locate a control in tests.
+`bui_row_layout(bui_get_theme(ui), row)` returns the rectangles a row uses (`row`, `control`, `prev`, `next`). Use it to align custom rows or to locate a control in tests.
 
 ### Toggle
 
 ```c
-bui_toggle_row(ui, &theme, "fullscreen", rect, &f, &fullscreen, NULL, NULL);   /* "ON" / "OFF" */
-bui_toggle_row(ui, &theme, "audio", rect, &f, &headphones, "HEADPHONES", "SPEAKERS");
+bui_toggle_row(ui, "fullscreen", rect, &f, &fullscreen, NULL, NULL);   /* "ON" / "OFF" */
+bui_toggle_row(ui, "audio", rect, &f, &headphones, "HEADPHONES", "SPEAKERS");
 ```
 
 Activate, Left, Right or a click on the control flips it. It is spoken as *"Fullscreen, on"*.
@@ -88,7 +113,7 @@ Activate, Left, Right or a click on the control flips it. It is spoken as *"Full
 ```c
 bui_option off = {"OFF", "Light passes glass plainly", "Colored shadows, off. A little faster"};
 bui_option on  = {"ON",  "Glass tints the light",      "Colored shadows, on"};
-bui_toggle_row_ex(ui, &theme, "colored", rect, &f, &colored, &off, &on);
+bui_toggle_row_ex(ui, "colored", rect, &f, &colored, &off, &on);
 ```
 
 ### Choice
@@ -98,7 +123,7 @@ bui_option modes[] = {
   {"SINGLE", "1 ray a face: the fastest", NULL},
   {"4 CORNERS", "4 rays a face: cleaner edges", NULL},
 };
-bui_choice_row(ui, &theme, "mode", rect, &f, &mode, modes, 2);
+bui_choice_row(ui, "mode", rect, &f, &mode, modes, 2);
 ```
 
 Cycles through options with Left and Right, the arrow buttons, or Activate. The selected option's description replaces the row's while it is selected. It is spoken as *"Sample mode, SINGLE. 1 ray a face: the fastest"*, or as the option's own `spoken` text.
@@ -109,7 +134,7 @@ Cycles through options with Left and Right, the arrow buttons, or Activate. The 
 static void percent(float v, char* out, size_t size, void* user) {
   snprintf(out, size, "%d%%", (int)(v * 100.0f + 0.5f));
 }
-bui_slider_row(ui, &theme, "volume", rect, &f, &volume, 0.0f, 1.0f, 0.05f, percent, NULL, NULL);
+bui_slider_row(ui, "volume", rect, &f, &volume, 0.0f, 1.0f, 0.05f, percent, NULL, NULL);
 ```
 
 - Left and Right step by `step`, snapped to multiples of it from `lo`.
@@ -122,7 +147,7 @@ bui_slider_row(ui, &theme, "volume", rect, &f, &volume, 0.0f, 1.0f, 0.05f, perce
 
 ```c
 bui_option ranges[] = {{"3.2 M"}, {"6.4 M"}, {"12.8 M"}, {"25.6 M"}};
-bui_stops_row(ui, &theme, "range", rect, &f, &stop, ranges, 4);
+bui_stops_row(ui, "range", rect, &f, &stop, ranges, 4);
 ```
 
 A slider with a fixed number of marked positions. It steps without wrapping, and dragging snaps to the nearest stop. Each stop is a `bui_option` with its own label, description and spoken text.
@@ -131,7 +156,7 @@ A slider with a fixed number of marked positions. It steps without wrapping, and
 
 ```c
 bui_field reset = {"Reset controls", "Every key back to its default"};
-if (bui_button_row(ui, &theme, "reset", rect, &reset, "RESET")) reset_bindings();
+if (bui_button_row(ui, "reset", rect, &reset, "RESET")) reset_bindings();
 ```
 
 A row whose control is a button. It is spoken as *"Reset controls: Every key back to its default"*.
@@ -141,7 +166,7 @@ A row whose control is a button. It is spoken as *"Reset controls: Every key bac
 ```c
 static bool open = false;
 bui_field shadows = {"Shadows", "How shadows are worked out"};
-bui_foldout_row(ui, &theme, "shadows", rect, &shadows, &open);
+bui_foldout_row(ui, "shadows", rect, &shadows, &open);
 if (open) { /* declare the rows inside */ }
 ```
 
