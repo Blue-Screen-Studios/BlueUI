@@ -122,8 +122,21 @@ bool bui_input_pressed(bui_input* in, int64_t code) {
 /* --------------------------------------------------------- the context */
 
 static const bui_strings kStrings = {
-    "Item {i} of {n}", "Narrator on", "Narrator off. Press N to switch it back on", "tab", "Cancelled",
-    {"button", "tab", "toggle", "slider", "selector", "text", ""}};
+    "Item {i} of {n}",
+    "Narrator on",
+    "Narrator off",
+    "tab",
+    "Cancelled",
+    {"button", "tab", "toggle", "slider", "selector", "text", ""},
+    "OK",
+    "Narration available",
+    "This game can read its menus and screens aloud.",
+    "Enable narrator",
+    "Disable narrator",
+    "Controller disconnected",
+    "Reconnect it, or carry on with the keyboard and mouse.",
+    "Controller connected",
+    "The controller is ready to use."};
 
 bui_context* bui_create(const bui_config* config) {
   bui_context* ui = calloc(1, sizeof(bui_context));
@@ -137,6 +150,11 @@ bui_context* bui_create(const bui_config* config) {
   ui->speech_on = true;
   bui_input_clear(&ui->in);
   bui_reset(ui);
+  ui->controller_modals = c.controller_modals;
+  if (!c.skip_narrator_support_modal) {
+    const char* buttons[2] = {ui->strings.narrator_enable, ui->strings.narrator_disable};
+    bui_open_modal(ui, BUI_MODAL_NARRATOR, ui->strings.narrator_title, ui->strings.narrator_text, buttons, 2);
+  }
   return ui;
 }
 
@@ -144,6 +162,7 @@ void bui_destroy(bui_context* ui) {
   if (!ui) return;
   bui__voice_destroy(ui->voice);
   bui__free_packs(ui);
+  bui__free_modals(ui);
   bui__arena_free(&ui->arenas[0]), bui__arena_free(&ui->arenas[1]);
   free(ui->draw), free(ui->entries), free(ui->found), free(ui->hinted), free(ui->scrolls);
   bui__str* strs[] = {&ui->screen_name,  &ui->page_name,   &ui->last_page_name,  &ui->hint_keyboard, &ui->hint_gamepad,
@@ -172,7 +191,11 @@ void bui_reset(bui_context* ui) {
   ui->has_captured = ui->capture_cancelled = false;
   ui->holding = ui->hold_heard = false;
   ui->speech_toggled = false;
-  ui->pending_sound = -1, ui->sound_requested = false, ui->last_change = -1e9, ui->sound_focus_id[0] = 0;
+  ui->pending_event = -1, ui->event_requested = false, ui->last_change = -1e9, ui->sound_focus_id[0] = 0;
+  ui->has_frame_event = ui->has_frame_rumble = false;
+  bui__free_modals(ui);
+  ui->modal_frame = ui->has_result = ui->focus_saved = ui->restore_pending = ui->restore_focus = false;
+  ui->speech_choice_pending = false, ui->pad_known = false;
   update_state(ui);
 }
 
@@ -235,7 +258,7 @@ void bui_stop_speech(bui_context* ui) { bui__voice_stop(ui->voice); }
 
 void bui_set_speech_enabled(bui_context* ui, bool on, bool announce) {
   if (ui->speech_on && !on) bui__voice_stop(ui->voice);
-  if (announce && on != ui->speech_on) ui->speech_toggled = true;
+  if (announce && on != ui->speech_on) ui->speech_toggled = ui->toggle_pending = true;
   ui->speech_on = on;
   ui->state.speech_enabled = on;
 }
@@ -271,7 +294,7 @@ void bui_begin_frame(bui_context* ui, const bui_input* input) {
   bui__arena_reset(bui__frame_arena(ui));
   ui->draw_count = ui->entry_count = 0;
   ui->rows = 0;
-  ui->speech_toggled = false;
+  ui->speech_toggled = ui->toggle_pending, ui->toggle_pending = false;
   ui->has_tabs = false;
   ui->hovered_id[0] = 0;
   ui->pending_activate = ui->pending_back = false;
@@ -281,6 +304,39 @@ void bui_begin_frame(bui_context* ui, const bui_input* input) {
   bui__str_set(&ui->screen_name, ""), bui__str_set(&ui->page_name, "");
   bui__str_set(&ui->hint_keyboard, ""), bui__str_set(&ui->hint_gamepad, "");
   ui->scroll_at = -1;
+  /* The narrator modal's choice, from its answer last frame: said now. */
+  if (ui->speech_choice_pending) {
+    ui->speech_choice_pending = false;
+    if (ui->speech_on && !ui->speech_choice) bui__voice_stop(ui->voice);
+    ui->speech_on = ui->speech_choice, ui->speech_toggled = true;
+  }
+  /* The last modal answered: the focus back where it was. */
+  if (ui->restore_pending && ui->modal_count == 0) {
+    ui->restore_pending = ui->focus_saved = false, ui->restore_focus = true;
+    memcpy(ui->focus_id, ui->saved_focus, BUI_ID_MAX), ui->focus_index = ui->saved_index;
+  }
+  bui__controller_events(ui);
+  /* A modal shown: the game's screen declared as usual, but its input held
+   * back for the modal (bui_end_frame). */
+  ui->modal_frame = ui->modal_count > 0;
+  if (ui->modal_frame) {
+    if (!ui->focus_saved) {
+      memcpy(ui->saved_focus, ui->focus_id, BUI_ID_MAX), ui->saved_index = ui->focus_index;
+      ui->focus_saved = true, ui->restore_pending = false;
+      bui_begin_navigating(ui);  /* (its first button outlined: Enter or A answers at once) */
+    }
+    ui->modal_in = *in;
+    const bui_input held = *in;
+    bui_input_clear(in);
+    in->time = held.time, in->device = held.device, in->speech_playing = held.speech_playing;
+    in->gamepad_connected = held.gamepad_connected, in->screen_size = held.screen_size;
+    return;
+  }
+  bui__take_input(ui);
+}
+
+void bui__take_input(bui_context* ui) {
+  bui_input* in = &ui->in;
   /* The mouse moved well away (or clicked): its turn again. */
   if (ui->navigating && !ui->nav_anchored) ui->nav_mouse = in->mouse, ui->nav_anchored = true;
   if (ui->navigating && (hypotf(in->mouse.x - ui->nav_mouse.x, in->mouse.y - ui->nav_mouse.y) > 8.0f || in->clicked))
@@ -332,10 +388,6 @@ void bui_begin_frame(bui_context* ui, const bui_input* input) {
       case BUI_KEY_BACK: ui->pending_back = true; break;
       case BUI_KEY_TAB_NEXT: ui->tab_step += 1; break;
       case BUI_KEY_TAB_PREV: ui->tab_step -= 1; break;
-      case BUI_KEY_TOGGLE_SPEECH:
-        ui->speech_on = !ui->speech_on, ui->speech_toggled = true;
-        if (!ui->speech_on) bui__voice_stop(ui->voice);
-        break;
       case BUI_KEY_REPEAT:
         if (ui->speech_on && ui->last_line.len) {
           bui__str line = {0};
@@ -349,6 +401,7 @@ void bui_begin_frame(bui_context* ui, const bui_input* input) {
   }
   if (in->tab_hotkey > 0) ui->tab_jump = in->tab_hotkey - 1;
 }
+
 
 void bui_screen(bui_context* ui, const char* id, const char* name, const bui_hints* hints) {
   copy_id(ui->screen_id, id);
@@ -418,11 +471,11 @@ bui_result bui_declare(bui_context* ui, const char* id, const bui_item* it) {
       r.dragging = true;
       r.drag = clampf((in->mouse.x - it->track.x0) / (w > 1.0f ? w : 1.0f), 0.0f, 1.0f);
     }
-    if (r.activated) bui__auto_sound(ui, it->back ? BUI_SOUND_BACK : BUI_SOUND_PRESS);
+    if (r.activated) bui__auto_event(ui, it->back ? BUI_EVENT_BACK : BUI_EVENT_PRESS);
   } else {
     /* (Pressed or stepped while disabled: heard, not changed.) */
     const bool clicked = in->clicked && e->shown && bui_rect_contains(it->rect, in->click_at);
-    if (clicked || (r.focused && (ui->pending_activate || ui->pending_step))) bui__auto_sound(ui, BUI_SOUND_DENIED);
+    if (clicked || (r.focused && (ui->pending_activate || ui->pending_step))) bui__auto_event(ui, BUI_EVENT_DENIED);
     if (r.focused) ui->pending_activate = false, ui->pending_step = 0;
   }
   return r;
@@ -594,16 +647,37 @@ static void update_state(bui_context* ui) {
   s->last_line = bui__str_c(&ui->last_line);
   s->navigating = ui->navigating, s->speech_enabled = ui->speech_on, s->speech_toggled = ui->speech_toggled;
   s->back_pressed = ui->pending_back, s->device = ui->in.device;
+  s->has_event = ui->has_frame_event, s->event = ui->frame_event;
+  s->has_rumble = ui->has_frame_rumble, s->rumble = ui->frame_rumble;
+  s->modal = ui->modal_count > 0 ? ui->modals[0].id : NULL;
+  s->gamepad_connected = ui->in.gamepad_connected;
 }
 
 /* A part of the frame's line (". " between them). */
 static void add_part(bui__str* line, const char* part) {
   if (!part || !*part) return;
-  if (line->len) bui__str_add(line, ". ");
+  if (line->len) {
+    const char last = line->data[line->len - 1];
+    bui__str_add(line, last == '.' || last == '!' || last == '?' ? " " : ". ");  /* (no "..") */
+  }
   bui__str_add(line, part);
 }
 
 void bui_end_frame(bui_context* ui) {
+  ui->toggle_pending = false;  /* (switched during this frame: said in it) */
+  /* A modal: the game's items set aside, the frame's input its. */
+  if (ui->modal_frame) {
+    ui->in = ui->modal_in;
+    ui->entry_count = 0, ui->rows = 0, ui->has_tabs = false, ui->scroll_at = -1, ui->hovered_id[0] = 0;
+    ui->pending_activate = ui->pending_back = false;
+    ui->pending_step = ui->pending_move = ui->tab_step = 0;
+    ui->tab_jump = -1;
+    bui__str_set(&ui->page_name, "");
+    bui__take_input(ui);
+    ui->pending_move += ui->pending_step, ui->pending_step = 0;  /* (its buttons side by side: left and right move too) */
+    ui->tab_step = 0, ui->tab_jump = -1;
+    bui__modal_frame(ui);
+  }
   const bui_input* in = &ui->in;
   ui->had_tabs = ui->has_tabs;
   /* The focus: on the screen's items (a new screen or page: its first). */
@@ -618,8 +692,11 @@ void bui_end_frame(bui_context* ui) {
     if (strcmp(ui->entries[nav[k]].id, ui->focus_id) == 0) index = k;
     if (ui->hovered_id[0] && strcmp(ui->entries[nav[k]].id, ui->hovered_id) == 0) hovered = k;
   }
-  /* (A new screen: its first. Its focused item gone (folded away): the one in its place.) */
-  if (arrived || (index < 0 && n > 0)) index = arrived ? 0 : (ui->focus_index < n - 1 ? ui->focus_index : n - 1);
+  /* (A new screen: its first; back from a modal: where it was. Its focused
+   * item gone (folded away): the one in its place.) */
+  const bool fresh = arrived && !ui->restore_focus;
+  ui->restore_focus = false;
+  if (fresh || (index < 0 && n > 0)) index = fresh ? 0 : (ui->focus_index < n - 1 ? ui->focus_index : n - 1);
   if (!ui->navigating && hovered >= 0) index = hovered;
   if (n == 0) index = -1;
   bool moved = arrived;
@@ -656,18 +733,18 @@ void bui_end_frame(bui_context* ui) {
   {
     const bool new_screen = strcmp(ui->screen_id, ui->last_screen_id) != 0;
     const bool same_item = said >= 0 && strcmp(said_id, ui->sound_focus_id) == 0;
-    if (new_screen) bui__auto_sound(ui, BUI_SOUND_SCREEN);
-    else if (arrived) bui__auto_sound(ui, BUI_SOUND_TAB);
-    else if (said >= 0 && !same_item) bui__auto_sound(ui, BUI_SOUND_MOVE);
+    if (new_screen) bui__auto_event(ui, BUI_EVENT_SCREEN);
+    else if (arrived) bui__auto_event(ui, BUI_EVENT_TAB);
+    else if (said >= 0 && !same_item) bui__auto_event(ui, BUI_EVENT_MOVE);
     /* (A value dragged changes every frame: at most one change sound every 70 ms.) */
     if (same_item && in->time - ui->last_change > 0.07) {
       for (size_t k = 0; k < ui->found_count; ++k)
         if (strcmp(ui->found[k].id, said_id) == 0 && strcmp(ui->found[k].value, ui->entries[said].item.value) != 0)
-          bui__auto_sound(ui, BUI_SOUND_CHANGE);
+          bui__auto_event(ui, BUI_EVENT_CHANGE);
     }
     copy_id(ui->sound_focus_id, said_id);
-    if (ui->pending_sound == BUI_SOUND_CHANGE) ui->last_change = in->time;
-    bui__emit_sound(ui);
+    if (ui->pending_event == BUI_EVENT_CHANGE) ui->last_change = in->time;
+    bui__emit_event(ui);
   }
 
   /* The state: this frame's items. */

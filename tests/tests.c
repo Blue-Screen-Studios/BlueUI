@@ -40,7 +40,8 @@ struct harness {
 
 static void harness_init(harness* h, screen_fn screen) {
   memset(h, 0, sizeof(*h));
-  const bui_config c = {0, 0.0f, true};
+  bui_config c = {0};
+  c.no_voice = true, c.skip_narrator_support_modal = true;
   h->ui = bui_create(&c);
   h->screen = screen;
   h->pressed = h->hit = -1;
@@ -312,14 +313,16 @@ static void speech_tests(void) {
   bui_announce(h.ui, "Saved", BUI_SAY_NORMAL);
   frame(&h);
   expect(same(said(&h), "Saved"), "an announcement with the frame's line", said(&h));
-  key(&h, BUI_KEY_TOGGLE_SPEECH);
+  bui_set_speech_enabled(h.ui, false, true);
+  frame(&h);
   const bui_state* s = bui_get_state(h.ui);
-  expect(!s->speech_enabled && s->speech_toggled && same(said(&h), "Narrator off. Press N to switch it back on"), "switched off: said", said(&h));
+  expect(!s->speech_enabled && s->speech_toggled && same(said(&h), "Narrator off"), "switched off (announced): said", said(&h));
   const size_t lines = h.lines;
   bui_announce(h.ui, "Unheard", BUI_SAY_NORMAL);
   frame(&h);
   expect(h.lines == lines, "off: nothing said", NULL);
-  key(&h, BUI_KEY_TOGGLE_SPEECH);
+  bui_set_speech_enabled(h.ui, true, true);
+  frame(&h);
   expect(starts(said(&h), "Narrator on. Main menu"), "on: where it is", said(&h));
   key(&h, BUI_KEY_REPEAT);
   expect(h.lines == lines + 2, "the last line again", NULL);
@@ -351,7 +354,8 @@ static void theme_tests(void) {
   harness h;
   harness_init(&h, play_screen);
   bui_destroy(h.ui);
-  const bui_config c = {0, 0.0f, true, &mine};
+  bui_config c = {0};
+  c.no_voice = true, c.theme = &mine, c.skip_narrator_support_modal = true;
   h.ui = bui_create(&c);
   frame(&h);
   expect(has_color(h.ui, mine.button) && bui_get_theme(h.ui)->button.b == 0.3f, "the config's theme: the widgets drawn with it", NULL);
@@ -425,14 +429,14 @@ static void sound_tests(void) {
   expect(strcmp(heard, "denied") == 0, "a disabled button pressed: denied", heard);
   /* A sound asked for wins over BlueUI's own choice; each pack's clips differ. */
   bui_audio a = {0};
-  bui_play_sound(h.ui, BUI_SOUND_MOVE);
+  bui_trigger(h.ui, BUI_EVENT_MOVE);
   sound_key(&h, BUI_KEY_ACTIVATE);
-  expect(strcmp(heard, "move") == 0, "bui_play_sound: in place of BlueUI's choice", heard);
+  expect(strcmp(heard, "move") == 0, "bui_trigger: in place of BlueUI's choice", heard);
   size_t lengths[BUI_SOUND_PACK_COUNT] = {0};
   for (int p = BUI_SOUNDS_SOFT; p < BUI_SOUND_PACK_COUNT; ++p) {
     t.sound_pack = (bui_sound_pack)p;
     bui_set_theme(h.ui, &t);
-    bui_play_sound(h.ui, BUI_SOUND_PRESS);
+    bui_trigger(h.ui, BUI_EVENT_PRESS);
     bui_begin_frame(h.ui, NULL), h.screen(&h), bui_end_frame(h.ui);
     while (bui_next_audio(h.ui, &a)) {
       if (a.op == BUI_AUDIO_SOUND && a.sample_rate == 48000 && memcmp(a.wav, "RIFF", 4) == 0) lengths[p] = a.sample_count;
@@ -449,13 +453,129 @@ static void sound_tests(void) {
   bui_set_theme(h.ui, &t);
   /* Sounds don't cut speech off, and play with the narrator off. */
   bui_say(h.ui, "Speech", false);
-  bui_play_sound(h.ui, BUI_SOUND_MOVE);
+  bui_trigger(h.ui, BUI_EVENT_MOVE);
   bui_begin_frame(h.ui, NULL), h.screen(&h), bui_end_frame(h.ui);
   int speech = 0, sounds = 0;
   while (bui_next_audio(h.ui, &a)) speech += a.op == BUI_AUDIO_PLAY, sounds += a.op == BUI_AUDIO_SOUND, bui_audio_free(&a);
   bui_set_speech_enabled(h.ui, false, false);
   sound_key(&h, BUI_KEY_UP);
   expect(speech == 1 && sounds == 1 && strcmp(heard, "move") == 0, "alongside speech; and with the narrator off", heard);
+  harness_free(&h);
+}
+
+/* --------------------------------------------------------------- rumble */
+
+static void pad_key(harness* h, bui_key k) {
+  bui_input in = none();
+  in.device = BUI_DEVICE_GAMEPAD;
+  sound_frame_with(h, &k, 1, in);
+}
+
+static void rumble_tests(void) {
+  printf("Rumble\n");
+  harness h;
+  harness_init(&h, sounds_screen);
+  sound_frame_with(&h, NULL, 0, none());  /* (arrived: past the screen's event) */
+  pad_key(&h, BUI_KEY_DOWN);
+  const bui_state* s = bui_get_state(h.ui);
+  expect(s->has_event && s->event == BUI_EVENT_MOVE && !s->has_rumble, "the default theme: the event, no rumble", NULL);
+  bui_theme t = bui_default_theme();
+  t.rumble_pack = BUI_RUMBLE_SOFT;
+  bui_set_theme(h.ui, &t);
+  pad_key(&h, BUI_KEY_ACTIVATE);
+  s = bui_get_state(h.ui);
+  const bui_rumble soft = s->rumble;
+  expect(s->has_rumble && s->event == BUI_EVENT_PRESS && soft.step_count >= 1 && soft.steps[0].ms > 0 && soft.steps[0].low > 0,
+         "Soft, a press on a controller: its pattern in the state", NULL);
+  t.rumble_pack = BUI_RUMBLE_CRISP;
+  bui_set_theme(h.ui, &t);
+  pad_key(&h, BUI_KEY_ACTIVATE);
+  s = bui_get_state(h.ui);
+  expect(s->has_rumble && memcmp(&s->rumble, &soft, sizeof(soft)) != 0, "Crisp: a pattern of its own", NULL);
+  const bui_rumble crisp = s->rumble;
+  t.rumble_strength = 0.5f;
+  bui_set_theme(h.ui, &t);
+  pad_key(&h, BUI_KEY_ACTIVATE);
+  s = bui_get_state(h.ui);
+  expect(s->has_rumble && fabsf(s->rumble.steps[0].high - 0.5f * crisp.steps[0].high) < 1e-5f && s->rumble.steps[0].ms == crisp.steps[0].ms,
+         "rumble_strength: the motors scaled, the timings kept", NULL);
+  sound_key(&h, BUI_KEY_ACTIVATE);
+  s = bui_get_state(h.ui);
+  expect(s->has_event && !s->has_rumble, "the keyboard: no rumble", NULL);
+  sound_frame_with(&h, NULL, 0, none());
+  expect(!bui_get_state(h.ui)->has_event, "nothing happened: no event", NULL);
+  harness_free(&h);
+}
+
+/* --------------------------------------------------------------- modals */
+
+static void modals_tests(void) {
+  printf("Modals\n");
+  /* The narrator's offer: shown first unless skipped, heard with speech off. */
+  harness h;
+  harness_init(&h, menu_screen);
+  bui_destroy(h.ui);
+  bui_config c = {0};
+  c.no_voice = true;
+  h.ui = bui_create(&c);
+  bui_set_speech_enabled(h.ui, false, false);
+  frame(&h);
+  const bui_state* s = bui_get_state(h.ui);
+  expect(s->modal && strcmp(s->modal, BUI_MODAL_NARRATOR) == 0 && starts(said(&h), "Narration available. This game can read") &&
+             strstr(said(&h), "Enable narrator. Item 1 of 2, button") && same(focused(&h), "bui.modal.0"),
+         "the narrator's offer: shown, spoken (speech off), Enable focused", said(&h));
+  key(&h, BUI_KEY_DOWN);
+  expect(h.pressed == -1 && same(focused(&h), "bui.modal.1"), "the screen under it: no input; down: Disable", NULL);
+  key(&h, BUI_KEY_UP), key(&h, BUI_KEY_ACTIVATE);
+  int button = -1;
+  const bool answered = bui_take_modal_result(h.ui, BUI_MODAL_NARRATOR, &button) && button == 0;
+  frame(&h);
+  s = bui_get_state(h.ui);
+  expect(answered && !s->modal && s->speech_enabled && s->speech_toggled && starts(said(&h), "Narrator on. Main menu"),
+         "Enable: speech on (speech_toggled), the screen said again", said(&h));
+  harness_free(&h);
+
+  /* A controller unplugged: its modal; the focus back after. */
+  harness_init(&h, menu_screen);
+  bui_input in = none();
+  in.gamepad_connected = true;
+  const bui_key down = BUI_KEY_DOWN;
+  frame_with(&h, NULL, 0, in);
+  frame_with(&h, &down, 1, in), frame_with(&h, &down, 1, in);
+  expect(same(focused(&h), "CHARACTER"), "(the focus on the second item)", NULL);
+  frame(&h);  /* (connected: false now) */
+  s = bui_get_state(h.ui);
+  expect(s->modal && strcmp(s->modal, BUI_MODAL_CONTROLLER) == 0 && starts(said(&h), "Controller disconnected"),
+         "connected, then not: \"Controller disconnected\"", said(&h));
+  key(&h, BUI_KEY_BACK);
+  frame(&h);
+  expect(!bui_get_state(h.ui)->modal && same(focused(&h), "CHARACTER") && h.back == false, "Back: OK; the focus back on its item", NULL);
+  in = none();
+  in.gamepad_event = BUI_GAMEPAD_DISCONNECTED;
+  frame_with(&h, NULL, 0, in);
+  in = none();
+  in.gamepad_event = BUI_GAMEPAD_CONNECTED;
+  frame_with(&h, NULL, 0, in);
+  expect(!bui_get_state(h.ui)->modal, "reported events; plugged back in: the modal closes itself", NULL);
+  bui_set_controller_modals(h.ui, BUI_CONTROLLER_MODALS_ALL);
+  frame_with(&h, NULL, 0, in);
+  expect(bui_modal_open(h.ui, BUI_MODAL_CONTROLLER) && starts(said(&h), "Controller connected"), "ALL: \"Controller connected\" too", said(&h));
+  bui_close_modal(h.ui, BUI_MODAL_CONTROLLER);
+  bui_set_controller_modals(h.ui, BUI_CONTROLLER_MODALS_NONE);
+  in.gamepad_event = BUI_GAMEPAD_DISCONNECTED;
+  frame_with(&h, NULL, 0, in);
+  expect(!bui_modal_open(h.ui, NULL), "NONE: no modal", NULL);
+
+  /* A game's own: its buttons, clicked; its answer once. */
+  const char* buttons[] = {"Save", "Discard", "Cancel"};
+  bui_open_modal(h.ui, "quit", "Quit?", "You have unsaved changes.", buttons, 3);
+  frame(&h);
+  const bui_item_state* discard = bui_find(h.ui, "bui.modal.1");
+  click(&h, discard ? bui_rect_center(discard->rect) : bui_rect_center(row_at(0)));
+  button = -1;
+  expect(discard && bui_take_modal_result(h.ui, "quit", &button) && button == 1 && !bui_take_modal_result(h.ui, "quit", &button) &&
+             h.pressed == -1,
+         "a game's modal: clicked Discard (1), taken once; nothing under it pressed", NULL);
   harness_free(&h);
 }
 
@@ -500,6 +620,8 @@ int main(void) {
   speech_tests();
   theme_tests();
   sound_tests();
+  rumble_tests();
+  modals_tests();
   voice_tests();
   printf(failures ? "%d failed\n" : "all passed\n", failures);
   return failures ? 1 : 0;

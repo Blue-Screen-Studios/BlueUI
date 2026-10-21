@@ -48,7 +48,6 @@ static void key_down(SDL_Keycode k, bool shift) {
       bui_input_key(&input, BUI_KEY_BACK);
       bui_input_key(&input, BUI_KEY_CANCEL_CAPTURE);
       break;
-    case SDLK_N: bui_input_key(&input, BUI_KEY_TOGGLE_SPEECH); break;
     case SDLK_R: bui_input_key(&input, BUI_KEY_REPEAT); break;
     default:
       if (k >= SDLK_1 && k <= SDLK_9) input.tab_hotkey = (int)(k - SDLK_1) + 1;
@@ -73,7 +72,6 @@ static void pad_button(Uint8 b, bool down, double now) {
     case SDL_GAMEPAD_BUTTON_EAST: bui_input_key(&input, BUI_KEY_BACK); break;
     case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: bui_input_key(&input, BUI_KEY_TAB_PREV); break;
     case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: bui_input_key(&input, BUI_KEY_TAB_NEXT); break;
-    case SDL_GAMEPAD_BUTTON_BACK: bui_input_key(&input, BUI_KEY_TOGGLE_SPEECH); break;
     case SDL_GAMEPAD_BUTTON_START: bui_input_key(&input, BUI_KEY_CANCEL_CAPTURE); break;
     default: break;
   }
@@ -118,6 +116,38 @@ static void play(SDL_AudioStream* speech, SDL_AudioStream* sounds, bui_context* 
     }
     bui_audio_free(&a);
   }
+}
+
+/* --------------------------------------------------------------- rumble */
+
+/* BlueUI hands over a rumble as timings (bui_state.rumble); playing it on
+ * the controllers is the game's job. Each frame: the step due now, on every
+ * open controller, sent once as it starts. */
+#define MAX_PADS 8
+static SDL_Gamepad* pads[MAX_PADS];
+static bui_rumble playing;
+static double playing_since = -1.0;
+static int playing_step = -1;
+
+static void rumble_start(const bui_rumble* r, double now) { playing = *r, playing_since = now, playing_step = -1; }
+
+static void rumble_frame(double now) {
+  if (playing_since < 0.0) return;
+  double end = playing_since;
+  int step = -1;
+  for (int k = 0; k < playing.step_count; ++k) {
+    end += playing.steps[k].ms / 1000.0;
+    if (now < end) {
+      step = k;
+      break;
+    }
+  }
+  if (step == playing_step) return;
+  playing_step = step;
+  if (step < 0) playing_since = -1.0;  /* (done: the motors stop as the last step's time runs out) */
+  const bui_rumble_step s = step >= 0 ? playing.steps[step] : (bui_rumble_step){0, 0, 0};
+  for (int p = 0; p < MAX_PADS; ++p)
+    if (pads[p]) SDL_RumbleGamepad(pads[p], (Uint16)(s.low * 65535.0f), (Uint16)(s.high * 65535.0f), (Uint32)(s.ms + 0.5f));
 }
 
 /* --------------------------------------------------------------- themes */
@@ -189,11 +219,13 @@ enum {
   PAGE_REBINDING,
   PAGE_SPEECH,
   PAGE_SOUNDS,
+  PAGE_RUMBLE,
+  PAGE_MODALS,
   PAGE_THEMES,
   PAGE_COUNT
 };
 static const char* const kPages[PAGE_COUNT] = {"Buttons", "Toggles", "Choices", "Sliders", "Tabs", "Foldouts",
-                                               "Scrolling", "Custom items", "Rebinding", "Speech", "Sounds", "Themes"};
+                                               "Scrolling", "Custom items", "Rebinding", "Speech", "Sounds", "Rumble", "Modals", "Themes"};
 
 typedef struct demo {
   bool running;
@@ -209,6 +241,10 @@ typedef struct demo {
   int64_t binding[3];
   int theme, size;
   int sounds;  /* the theme's sound pack: a bui_sound_pack */
+  int rumble;  /* the theme's rumble pack: a bui_rumble_pack */
+  int answer;  /* the example modal's last answer (-1: none yet) */
+  int controller_modals;
+  float rumble_strength;
 } demo;
 
 /* Rows down a page, from (x0, y) to x1, in font pixels times `p`. */
@@ -495,7 +531,7 @@ static void page_speech(bui_context* ui, layout* l) {
   explain(ui, l, "about",
           "Everything is read out automatically. A game can also announce its own lines with a priority: normal joins the "
           "current line, interrupt cuts in, queue waits its turn, and hold makes the screen wait until it finishes. "
-          "N or the View button switches the narrator, and R repeats the last line.");
+          "The narrator can be switched below, and R repeats the last line.");
   const float p = l->p, w = 96.0f * p;
   heading(ui, l, "EXAMPLE ANNOUNCEMENTS");
   static const char* const labels[] = {"NORMAL", "INTERRUPT", "QUEUE", "HOLD"};
@@ -533,13 +569,56 @@ static void page_sounds(bui_context* ui, demo* d, layout* l) {
   heading(ui, l, "TRY EACH SOUND");
   static const char* const names[] = {"MOVE", "PRESS", "BACK", "CHANGE", "ON", "OFF", "TAB", "SCREEN", "DENIED"};
   const float p = l->p, w = 64.0f * p;
-  for (int s = 0; s < BUI_SOUND_COUNT; ++s) {
+  for (int s = 0; s < BUI_EVENT_COUNT; ++s) {
     if (s % 5 == 0) row(l, 18.0f);
     const float x = l->x0 + (float)(s % 5) * (w + 6 * p), y = l->y - 18.0f * p;
     bui_button_opts o = {0};
     o.spoken = bui_format(ui, "Play the %s sound", names[s]);
-    if (bui_button(ui, bui_format(ui, "sound.%d", s), names[s], bui_rect_make(x, y, x + w, y + 16.0f * p), &o)) bui_play_sound(ui, (bui_sound)s);
+    if (bui_button(ui, bui_format(ui, "sound.%d", s), names[s], bui_rect_make(x, y, x + w, y + 16.0f * p), &o)) bui_trigger(ui, (bui_event)s);
   }
+}
+
+static void page_rumble(bui_context* ui, demo* d, layout* l) {
+  explain(ui, l, "about",
+          "On a controller, each event can rumble too. A game picks a rumble pack in its theme: none, soft or crisp. BlueUI "
+          "never drives the controller; each frame's rumble arrives in its state as timings, and the game plays them on its "
+          "own motors. Use a controller to feel these.");
+  heading(ui, l, "EXAMPLE PACKS");
+  const bui_field pack = {"Example rumble pack"};
+  const bui_option packs[] = {{"NONE", "No rumble"}, {"SOFT", "Gentle pulses"}, {"CRISP", "Sharp ticks"}};
+  bui_choice_row(ui, "rumble", row(l, 18.0f), &pack, &d->rumble, packs, 3);
+  const bui_field strength = {"Example rumble strength", "Scales every pattern"};
+  bui_slider_row(ui, "rumble_strength", row(l, 18.0f), &strength, &d->rumble_strength, 0.0f, 1.0f, 0.1f, percent, NULL, NULL);
+  heading(ui, l, "TRY EACH RUMBLE");
+  static const char* const names[] = {"MOVE", "PRESS", "BACK", "CHANGE", "ON", "OFF", "TAB", "SCREEN", "DENIED"};
+  const float p = l->p, w = 64.0f * p;
+  for (int e = 0; e < BUI_EVENT_COUNT; ++e) {
+    if (e % 5 == 0) row(l, 18.0f);
+    const float x = l->x0 + (float)(e % 5) * (w + 6 * p), y = l->y - 18.0f * p;
+    bui_button_opts o = {0};
+    o.spoken = bui_format(ui, "Feel the %s rumble", names[e]);
+    if (bui_button(ui, bui_format(ui, "rumble.%d", e), names[e], bui_rect_make(x, y, x + w, y + 16.0f * p), &o)) bui_trigger(ui, (bui_event)e);
+  }
+}
+
+static void page_modals(bui_context* ui, demo* d, layout* l) {
+  explain(ui, l, "about",
+          "A modal is a window over the screen that has to be answered first. The screen underneath still draws but takes no "
+          "input, the modal is read out, and the focus goes back where it was afterwards. BlueUI opens its own: a narration "
+          "offer when a game starts, and a notice when a controller is unplugged. Games can open their own too.");
+  heading(ui, l, "EXAMPLE");
+  static const char* const buttons[] = {"Save", "Discard", "Cancel"};
+  const bui_field open = {"Example modal", "Three buttons; Back picks the last"};
+  if (bui_button_row(ui, "open", row(l, 18.0f), &open, "OPEN"))
+    bui_open_modal(ui, "example", "Example modal", "You have unsaved changes. Save them before leaving?", buttons, 3);
+  int button;
+  if (bui_take_modal_result(ui, "example", &button)) d->answer = button;
+  note(ui, l, d->answer < 0 ? "NOT ANSWERED YET" : bui_format(ui, "ANSWERED: %s", buttons[d->answer]));
+  heading(ui, l, "CONTROLLER MODALS");
+  const bui_field which = {"Example controller modals", "Unplug or plug in a controller to see them"};
+  const bui_option modes[] = {{"DISCONNECT", "When one is unplugged"}, {"ALL", "Unplugged and plugged in"}, {"NONE", "Never"}};
+  if (bui_choice_row(ui, "controller_modals", row(l, 18.0f), &which, &d->controller_modals, modes, 3))
+    bui_set_controller_modals(ui, (bui_controller_modals)d->controller_modals);
 }
 
 static void page_themes(bui_context* ui, demo* d, layout* l) {
@@ -561,8 +640,8 @@ static void page_themes(bui_context* ui, demo* d, layout* l) {
 static void declare(bui_context* ui, demo* d, int w, int h) {
   const bui_theme* t = bui_get_theme(ui);
   const float p = t->pixel;
-  const bui_hints hints = {"Up and down to move, left and right to change, Tab for the next page, N for the narrator, Escape to quit",
-                           "The D-pad to move and change, the bumpers for the next page, A to choose, View for the narrator, B to quit"};
+  const bui_hints hints = {"Up and down to move, left and right to change, Tab for the next page, Escape to quit",
+                           "The D-pad to move and change, the bumpers for the next page, A to choose, B to quit"};
   bui_screen(ui, "demo", "BlueUI demo", &hints);
   bui_fill(ui, bui_rect_make(0, 0, (float)w, (float)h), bui_rgb(0.0f, 0.0f, 0.0f));
   const float m = fmaxf(4 * p, roundf(0.02f * (float)(w < h ? w : h)));
@@ -591,6 +670,8 @@ static void declare(bui_context* ui, demo* d, int w, int h) {
     case PAGE_REBINDING: page_rebinding(ui, d, &l); break;
     case PAGE_SPEECH: page_speech(ui, &l); break;
     case PAGE_SOUNDS: page_sounds(ui, d, &l); break;
+    case PAGE_RUMBLE: page_rumble(ui, d, &l); break;
+    case PAGE_MODALS: page_modals(ui, d, &l); break;
     case PAGE_THEMES: page_themes(ui, d, &l); break;
   }
   bui_page(ui, kPages[d->page]);  /* (after the page: the Tabs page's example tab bar names a page too) */
@@ -649,10 +730,10 @@ int main(void) {
   bui_strings words = *bui_get_strings(ui);
   words.tab = "page";
   bui_set_strings(ui, &words);
-  bui_announce(ui, "Welcome to the BlueUI demo. Press N to switch the narrator off.", BUI_SAY_HOLD);
 
   demo d = {0};
   d.running = true, d.slider = 0.5f, d.spoken_slider = 1.0f, d.stops = 1, d.stepper = 5, d.size = 1, d.sounds = BUI_SOUNDS_SOFT;
+  d.rumble = BUI_RUMBLE_SOFT, d.rumble_strength = 1.0f, d.answer = -1;
   bui_input_clear(&input);
 
   while (d.running) {
@@ -661,7 +742,20 @@ int main(void) {
     while (SDL_PollEvent(&e)) {
       switch (e.type) {
         case SDL_EVENT_QUIT: d.running = false; break;
-        case SDL_EVENT_GAMEPAD_ADDED: SDL_OpenGamepad(e.gdevice.which); break;
+        case SDL_EVENT_GAMEPAD_ADDED:
+          for (int p = 0; p < MAX_PADS; ++p)
+            if (!pads[p]) {
+              pads[p] = SDL_OpenGamepad(e.gdevice.which);
+              break;
+            }
+          input.gamepad_event = BUI_GAMEPAD_CONNECTED;
+          break;
+        case SDL_EVENT_GAMEPAD_REMOVED:
+          for (int p = 0; p < MAX_PADS; ++p)
+            if (pads[p] && SDL_GetGamepadID(pads[p]) == e.gdevice.which) SDL_CloseGamepad(pads[p]), pads[p] = NULL;
+          input.gamepad_event = BUI_GAMEPAD_DISCONNECTED;
+          if (input.device == BUI_DEVICE_GAMEPAD) input.device = BUI_DEVICE_KEYBOARD;
+          break;
         case SDL_EVENT_KEY_DOWN:
           input.device = BUI_DEVICE_KEYBOARD;
           key_down(e.key.key, (e.key.mod & SDL_KMOD_SHIFT) != 0);
@@ -684,12 +778,16 @@ int main(void) {
     input.mouse.x = mx, input.mouse.y = my, input.mouse_down = (buttons & SDL_BUTTON_LMASK) != 0, input.clicked = click;
     input.time = now;
     input.speech_playing = stream && SDL_GetAudioStreamQueued(stream) > 0;
+    input.gamepad_connected = false;
+    for (int p = 0; p < MAX_PADS; ++p) input.gamepad_connected = input.gamepad_connected || pads[p];
 
     int w = 0, h = 0;
     SDL_GetRenderOutputSize(ren, &w, &h);
+    input.screen_size.x = (float)w, input.screen_size.y = (float)h;
     bui_theme theme = themes[d.theme];
     theme.pixel = fmaxf(1.0f, roundf(fminf((float)h / 360.0f, (float)w / 640.0f)) + (float)(d.size - 1));
     theme.sound_pack = (bui_sound_pack)d.sounds;
+    theme.rumble_pack = (bui_rumble_pack)d.rumble, theme.rumble_strength = d.rumble_strength;
     bui_set_theme(ui, &theme);
 
     bui_begin_frame(ui, &input);
@@ -698,6 +796,9 @@ int main(void) {
     declare(ui, &d, w, h);
     bui_end_frame(ui);
     play(stream, sounds, ui);
+    const bui_state* state = bui_get_state(ui);
+    if (state->has_rumble) rumble_start(&state->rumble, now);
+    rumble_frame(now);
 
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);

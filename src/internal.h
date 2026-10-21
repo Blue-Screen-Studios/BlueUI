@@ -63,18 +63,18 @@ bool bui__make_wav(const char* text, const float* pcm, size_t n, int rate, bui_a
 /* ----------------------------------------------------------- GUI sounds */
 
 typedef struct bui__pack {
-  float* pcm[BUI_SOUND_COUNT]; /* at the context's rate (NULL: silent) */
-  size_t count[BUI_SOUND_COUNT];
+  float* pcm[BUI_EVENT_COUNT]; /* at the context's rate (NULL: silent) */
+  size_t count[BUI_EVENT_COUNT];
 } bui__pack;
 
 /* The built-in packs, made at the context's rate (and let go of). */
 void bui__make_packs(bui_context* ui);
 void bui__free_packs(bui_context* ui);
 /* An event BlueUI noticed itself: kept if it's the frame's most specific,
- * unless the game asked for a sound (bui_play_sound) this frame. */
-void bui__auto_sound(bui_context* ui, bui_sound sound);
+ * unless the game asked for a sound (bui_trigger) this frame. */
+void bui__auto_event(bui_context* ui, bui_event sound);
 /* The frame's sound (the most specific asked for), handed over. */
-void bui__emit_sound(bui_context* ui);
+void bui__emit_event(bui_context* ui);
 
 /* -------------------------------------------------------------- context */
 
@@ -84,6 +84,17 @@ typedef struct bui__entry {
   bool shown;
   int scroll;    /* its view (-1: none) */
 } bui__entry;
+
+#define BUI__MODAL_MAX 8
+#define BUI__MODAL_BUTTONS 4
+
+typedef struct bui__modal {
+  char id[BUI_ID_MAX];
+  char* title;
+  char* message;
+  char* buttons[BUI__MODAL_BUTTONS];
+  int count;
+} bui__modal;
 
 typedef struct bui__scroll {
   char id[BUI_ID_MAX];
@@ -96,6 +107,7 @@ struct bui_context {
   bui_strings strings;
   bui_theme theme;
   bool speech_on, speech_toggled;
+  bool toggle_pending;  /* (switched, announcing, between frames: the next frame's) */
   bui_input in;
   /* The geometry. */
   bui_draw_cmd* draw;
@@ -133,15 +145,45 @@ struct bui_context {
   int64_t captured;
   /* GUI sounds. */
   bui__pack packs[BUI_SOUND_PACK_COUNT];
-  int pending_sound; /* (-1: none) */
-  bool sound_requested;
+  int pending_event; /* (-1: none) */
+  bool event_requested;
+  /* The last frame's event and rumble (the state's). */
+  bool has_frame_event, has_frame_rumble;
+  bui_event frame_event;
+  bui_rumble frame_rumble;
   double last_change;
   char sound_focus_id[BUI_ID_MAX];
+  /* Modals: those waiting (the first shown), this frame's input held back
+   * from the game's screen, the last answer, the focus to go back to. */
+  bui__modal modals[BUI__MODAL_MAX];
+  int modal_count;
+  bool modal_frame;
+  bui_input modal_in;
+  char result_id[BUI_ID_MAX];
+  int result_button;
+  bool has_result;
+  char saved_focus[BUI_ID_MAX];
+  int saved_index;
+  bool focus_saved, restore_pending, restore_focus;
+  /* The narrator modal: speech kept on while it's shown, the choice applied
+   * the next frame (speech_toggled then). */
+  bool speech_choice_pending, speech_choice;
+  /* Controllers. */
+  bui_controller_modals controller_modals;
+  bool pad_known, pad_was;
   /* Speech. */
   bui__str events, spoken_where, spoken_focus_id, last_line;
   bool holding, hold_heard;
   double hold_since;
 };
+
+/* Modals (modal.c): the controllers' changes; the shown modal declared and
+ * drawn over the game's screen (at bui_end_frame); all let go of. */
+void bui__controller_events(bui_context* ui);
+void bui__modal_frame(bui_context* ui);
+void bui__free_modals(bui_context* ui);
+/* The frame's input taken: navigation, capture, the keys (context.c). */
+void bui__take_input(bui_context* ui);
 
 /* The frame's arena (strings good till the frame after next). */
 static inline bui__arena* bui__frame_arena(bui_context* ui) { return &ui->arenas[ui->frame]; }

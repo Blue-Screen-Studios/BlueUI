@@ -19,7 +19,8 @@ Every function takes the context as its first argument unless noted. Strings pas
 - [Capture](#capture)
 - [Speech](#speech)
 - [Audio](#audio)
-- [GUI sounds](#gui-sounds)
+- [Feedback: events, sounds, rumble](#feedback-events-sounds-rumble)
+- [Modals](#modals)
 - [Drawing and text](#drawing-and-text)
 - [Widgets](#widgets)
 
@@ -74,6 +75,8 @@ typedef struct bui_config {
   float speech_rate;   /* speaking speed; 0 means 1.15, 1.0 is the voice's natural speed */
   bool  no_voice;      /* deliver lines as text only */
   const bui_theme* theme;  /* the game's look (copied); NULL uses bui_default_theme() */
+  bool  skip_narrator_support_modal;           /* no narration offer at startup */
+  bui_controller_modals controller_modals;     /* which controller changes open a modal */
 } bui_config;
 ```
 
@@ -97,10 +100,19 @@ typedef struct bui_config {
 typedef struct bui_strings {
   const char* item_of;     /* "Item {i} of {n}" */
   const char* speech_on;   /* "Narrator on" */
-  const char* speech_off;  /* "Narrator off. Press N to switch it back on" */
+  const char* speech_off;  /* "Narrator off" */
   const char* tab;         /* "tab", as in "Settings, Audio tab" */
   const char* cancelled;   /* "Cancelled" */
   const char* kinds[BUI_KIND_COUNT];  /* "button", "tab", "toggle", "slider", "selector", "text", "" */
+  const char* ok;                     /* "OK" */
+  const char* narrator_title;         /* "Narration available" */
+  const char* narrator_text;          /* "This game can read its menus and screens aloud." */
+  const char* narrator_enable;        /* "Enable narrator" */
+  const char* narrator_disable;       /* "Disable narrator" */
+  const char* pad_lost_title;         /* "Controller disconnected" */
+  const char* pad_lost_text;          /* "Reconnect it, or carry on with the keyboard and mouse." */
+  const char* pad_found_title;        /* "Controller connected" */
+  const char* pad_found_text;         /* "The controller is ready to use." */
 } bui_strings;
 ```
 
@@ -123,7 +135,9 @@ typedef struct bui_strings {
 | `button_edge`, `button`, `button_hot`, `button_text`, `button_text_off`, `button_edged` | Buttons, including button rows. |
 | `control_width`, `arrow_width`, `blurb_at` | Form row layout. |
 | `focus`, `focus_width`, `focus_gap` | The focus outline: colour, thickness, distance from the item. |
+| `backdrop` | Drawn over the whole screen behind a modal. |
 | `sound_pack`, `sound_volume` | The built-in GUI sound pack (`BUI_SOUNDS_NONE` by default, `BUI_SOUNDS_SOFT` or `BUI_SOUNDS_CRISP`) and its volume, 0 to 1. |
+| `rumble_pack`, `rumble_strength` | The built-in rumble pack (`BUI_RUMBLE_NONE` by default, `BUI_RUMBLE_SOFT` or `BUI_RUMBLE_CRISP`) and its strength, 0 to 1. |
 
 ---
 
@@ -144,12 +158,15 @@ typedef struct bui_strings {
 | `device` | `bui_device` | `BUI_DEVICE_KEYBOARD` or `BUI_DEVICE_GAMEPAD`. Chooses which hint is spoken. |
 | `time` | `double` | Seconds on a steady clock. |
 | `speech_playing` | `bool` | Whether the game is still playing a speech line. |
+| `gamepad_connected` | `bool` | Whether a controller is connected. Changes between frames count as plug events. |
+| `gamepad_event` | `bui_gamepad_event` | `BUI_GAMEPAD_CONNECTED` or `BUI_GAMEPAD_DISCONNECTED` when one happened this frame; otherwise `BUI_GAMEPAD_NONE`. |
+| `screen_size` | `bui_vec2` | The screen's size in pixels, for centring modals. 0 uses the extent of the geometry. |
 
 `BUI_MAX_KEYS` is 32 and `BUI_MAX_PRESSED` is 16.
 
 ### `bui_key`
 
-`BUI_KEY_UP`, `BUI_KEY_DOWN`, `BUI_KEY_LEFT`, `BUI_KEY_RIGHT`, `BUI_KEY_NEXT`, `BUI_KEY_PREV`, `BUI_KEY_ACTIVATE`, `BUI_KEY_BACK`, `BUI_KEY_TAB_NEXT`, `BUI_KEY_TAB_PREV`, `BUI_KEY_TOGGLE_SPEECH`, `BUI_KEY_REPEAT`, `BUI_KEY_CANCEL_CAPTURE`. [Concepts](concepts.md#focus-and-navigation) describes what each does.
+`BUI_KEY_UP`, `BUI_KEY_DOWN`, `BUI_KEY_LEFT`, `BUI_KEY_RIGHT`, `BUI_KEY_NEXT`, `BUI_KEY_PREV`, `BUI_KEY_ACTIVATE`, `BUI_KEY_BACK`, `BUI_KEY_TAB_NEXT`, `BUI_KEY_TAB_PREV`, `BUI_KEY_REPEAT`, `BUI_KEY_CANCEL_CAPTURE`. [Concepts](concepts.md#focus-and-navigation) describes what each does.
 
 ### Functions
 
@@ -243,6 +260,10 @@ Returned by `const bui_state* bui_get_state(const bui_context* ui)`. It describe
 | `speech_toggled` | Speech was switched on or off during this frame. |
 | `back_pressed` | Back was pressed and no item took it. |
 | `device` | The input device of the frame. |
+| `has_event`, `event` | The frame's UI event, if there was one. |
+| `has_rumble`, `rumble` | Its rumble, scaled by the theme's strength. Only while a controller is in use and the theme has a rumble pack. |
+| `modal` | The id of the modal shown, or `NULL`. |
+| `gamepad_connected` | As reported in the input. |
 
 ### `bui_item_state`
 
@@ -314,7 +335,7 @@ Returned by `const bui_state* bui_get_state(const bui_context* ui)`. It describe
 | `void bui_announce(bui_context* ui, const char* text, bui_priority priority)` | Speaks a game event, unless speech is off. |
 | `void bui_say(bui_context* ui, const char* text, bool queued)` | Speaks even when speech is off. |
 | `void bui_stop_speech(bui_context* ui)` | Drops pending lines and sends a stop event. |
-| `void bui_set_speech_enabled(bui_context* ui, bool on, bool announce)` | Turns speech on or off. With `announce`, the change is spoken as the toggle key would speak it. |
+| `void bui_set_speech_enabled(bui_context* ui, bool on, bool announce)` | Turns speech on or off. With `announce`, the change is spoken ("Narrator on", then where the player is; or "Narrator off") and `speech_toggled` is set that frame. |
 | `bool bui_speech_enabled(const bui_context* ui)` | Whether speech is on. |
 
 ---
@@ -341,23 +362,46 @@ Returned by `const bui_state* bui_get_state(const bui_context* ui)`. It describe
 
 ---
 
-## GUI sounds
+## Feedback: events, sounds, rumble
 
-See [Speech and audio](speech-and-audio.md#gui-sounds).
+See [Feedback](feedback.md).
 
-### `bui_sound`
+### Types
 
-`BUI_SOUND_MOVE`, `BUI_SOUND_PRESS`, `BUI_SOUND_BACK`, `BUI_SOUND_CHANGE`, `BUI_SOUND_ON`, `BUI_SOUND_OFF`, `BUI_SOUND_TAB`, `BUI_SOUND_SCREEN`, `BUI_SOUND_DENIED`; `BUI_SOUND_COUNT`.
-
-### `bui_sound_pack`
-
-`BUI_SOUNDS_NONE`, `BUI_SOUNDS_SOFT`, `BUI_SOUNDS_CRISP`; `BUI_SOUND_PACK_COUNT`. Chosen in `bui_theme.sound_pack`.
+| Type | Values or fields |
+|---|---|
+| `bui_event` | `BUI_EVENT_MOVE`, `BUI_EVENT_PRESS`, `BUI_EVENT_BACK`, `BUI_EVENT_CHANGE`, `BUI_EVENT_ON`, `BUI_EVENT_OFF`, `BUI_EVENT_TAB`, `BUI_EVENT_SCREEN`, `BUI_EVENT_DENIED`; `BUI_EVENT_COUNT`. |
+| `bui_sound_pack` | `BUI_SOUNDS_NONE`, `BUI_SOUNDS_SOFT`, `BUI_SOUNDS_CRISP`. |
+| `bui_rumble_pack` | `BUI_RUMBLE_NONE`, `BUI_RUMBLE_SOFT`, `BUI_RUMBLE_CRISP`. |
+| `bui_rumble_step` | `low`, `high` (motors, 0 to 1), `ms`. |
+| `bui_rumble` | `steps[BUI_RUMBLE_MAX_STEPS]` (4), `step_count`. |
 
 ### Functions
 
 | Function | Description |
 |---|---|
-| `void bui_play_sound(bui_context* ui, bui_sound sound)` | Plays an event's sound at this frame's end, in place of BlueUI's own choice. |
+| `void bui_trigger(bui_context* ui, bui_event event)` | Uses this event for the frame's sound and rumble, in place of BlueUI's own choice. |
+
+---
+
+## Modals
+
+See [Modals](modals.md).
+
+| Name | Description |
+|---|---|
+| `BUI_MODAL_NARRATOR` | `"bui.narrator"`: the narration offer. Buttons: 0 enable, 1 disable. |
+| `BUI_MODAL_CONTROLLER` | `"bui.controller"`: the controller notices. Button: 0 OK. |
+| `bui_gamepad_event` | `BUI_GAMEPAD_NONE`, `BUI_GAMEPAD_CONNECTED`, `BUI_GAMEPAD_DISCONNECTED`. |
+| `bui_controller_modals` | `BUI_CONTROLLER_MODALS_DISCONNECT` (default), `BUI_CONTROLLER_MODALS_ALL`, `BUI_CONTROLLER_MODALS_NONE`. |
+
+| Function | Description |
+|---|---|
+| `void bui_open_modal(bui_context* ui, const char* id, const char* title, const char* message, const char* const* buttons, int count)` | Opens a modal (up to 4 buttons; none means one "OK"). Strings are copied. Opening an id already open replaces it. |
+| `void bui_close_modal(bui_context* ui, const char* id)` | Removes a modal without an answer. |
+| `bool bui_modal_open(const bui_context* ui, const char* id)` | Whether that modal (or, with `NULL`, any) is open. |
+| `bool bui_take_modal_result(bui_context* ui, const char* id, int* button)` | Once a modal is answered, returns true a single time with the button chosen. |
+| `void bui_set_controller_modals(bui_context* ui, bui_controller_modals which)` | Which controller changes open a modal. |
 
 ---
 

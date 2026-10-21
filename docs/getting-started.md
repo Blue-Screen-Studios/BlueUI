@@ -41,6 +41,8 @@ in.wheel = wheel_delta;                 /* positive scrolls up */
 in.time = seconds_since_start;          /* steady clock */
 in.device = last_input_was_gamepad ? BUI_DEVICE_GAMEPAD : BUI_DEVICE_KEYBOARD;
 in.speech_playing = my_audio_is_playing_speech();
+in.gamepad_connected = any_controller_connected();   /* for the "Controller disconnected" modal */
+in.screen_size = (bui_vec2){screen_w, screen_h};     /* modals are centred on it */
 
 /* Keys pressed this frame, in order. */
 if (pressed(KEY_DOWN))   bui_input_key(&in, BUI_KEY_DOWN);
@@ -59,7 +61,6 @@ A typical mapping:
 | `BUI_KEY_ACTIVATE` | Enter, Space | A / Cross |
 | `BUI_KEY_BACK` | Escape | B / Circle |
 | `BUI_KEY_TAB_NEXT`, `BUI_KEY_TAB_PREV` | — | Right and left bumper |
-| `BUI_KEY_TOGGLE_SPEECH` | A key of your choice | View / Share |
 | `BUI_KEY_REPEAT` | A key of your choice | — |
 | `BUI_KEY_CANCEL_CAPTURE` | Escape | Start |
 
@@ -154,7 +155,7 @@ Game events can be announced at any time:
 ```c
 bui_announce(ui, "Game saved", BUI_SAY_NORMAL);                   /* joins this frame's line */
 bui_announce(ui, "Controller connected", BUI_SAY_INTERRUPT);      /* cuts in immediately */
-bui_announce(ui, "Welcome. Press N to turn the narrator off.", BUI_SAY_HOLD);  /* an opening line */
+bui_announce(ui, "Welcome to the swamp.", BUI_SAY_HOLD);          /* an opening line */
 ```
 
 See [Speech and audio](speech-and-audio.md) for what each priority does.

@@ -54,7 +54,6 @@ The first navigation key in mouse mode only switches to navigation mode, showing
 | Activate | Press the focused item (`bui_result.activated`). |
 | Back | Press the first declared item marked `back`. If no item takes it, `bui_back_pressed` returns true for the rest of the frame. |
 | Tab Next, Tab Prev | Always switch tabs. |
-| Toggle Speech | Turn speech on or off. The change is announced either way. |
 | Repeat | Speak the last line again. |
 
 When the focused item disappears, for example because its foldout closed, focus moves to the item now at the same position. When focus moves onto an item outside its scroll view, the view scrolls to show it on the next frame.
@@ -75,7 +74,7 @@ An item's `value` is a string the game chooses to represent its state. BlueUI ne
 
 ## Speech on and off
 
-When speech is off, nothing is spoken except the line confirming that it was turned off. The game's setting should drive `bui_set_speech_enabled(ui, on, false)` at startup. When the player toggles speech with `BUI_KEY_TOGGLE_SPEECH`, `bui_state.speech_toggled` is true for that frame, so the game can save the new setting.
+When speech is off, nothing is spoken except the line confirming that it was turned off. The game's setting should drive `bui_set_speech_enabled(ui, on, false)` at startup. The [narration offer](modals.md#the-narration-offer) shown when a game starts switches speech by the player's choice; `bui_state.speech_toggled` is true that frame, so the game can save the new setting. A settings screen can switch it with `bui_set_speech_enabled(ui, on, true)`, which announces the change.
 
 ## Scroll views
 

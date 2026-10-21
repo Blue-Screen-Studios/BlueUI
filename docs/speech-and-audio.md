@@ -78,42 +78,7 @@ With `bui_config.no_voice = true`, or a build with `BLUEUI_WITH_FLITE=OFF`, noth
 
 ## GUI sounds
 
-Besides speech, BlueUI can play short sounds that mark what happens on screen. The theme chooses a built-in *sound pack*:
-
-| `bui_sound_pack` | Sound |
-|---|---|
-| `BUI_SOUNDS_NONE` | No GUI sounds. The default theme's choice. |
-| `BUI_SOUNDS_SOFT` | Rounded sine tones. |
-| `BUI_SOUNDS_CRISP` | Clicks and square-wave ticks. |
-
-```c
-bui_theme theme = bui_default_theme();
-theme.sound_pack = BUI_SOUNDS_SOFT;
-theme.sound_volume = 0.8f;      /* 0..1 */
-```
-
-The packs are generated in code when a context is created, at the context's sample rate. BlueUI ships and loads no sound files.
-
-### Events
-
-| Event | Played when |
-|---|---|
-| `BUI_SOUND_MOVE` | The focus moves, or the mouse enters an item. |
-| `BUI_SOUND_PRESS` | An item is pressed. |
-| `BUI_SOUND_BACK` | A back item is pressed, by Escape, B or a click. |
-| `BUI_SOUND_CHANGE` | A value changes: a slider, a choice, or a custom item's `value`. While dragging, at most every 70 ms. |
-| `BUI_SOUND_ON`, `BUI_SOUND_OFF` | A toggle switches on or off; a foldout opens or closes. |
-| `BUI_SOUND_TAB` | The tab or page changes. |
-| `BUI_SOUND_SCREEN` | A new screen is shown. |
-| `BUI_SOUND_DENIED` | A disabled item is pressed or stepped. |
-
-At most one sound plays per frame. When several events happen together, the most specific wins. For example, a toggle being clicked plays *on*, not *press*. The order of precedence is: denied, back, on/off, tab, screen, press, change, move.
-
-Custom widgets get these sounds automatically through `bui_declare` and value-change detection. To choose a sound explicitly, call `bui_play_sound(ui, BUI_SOUND_ON)`. A requested sound replaces the one BlueUI chose for that frame.
-
-### Playing them
-
-GUI sounds arrive from `bui_next_audio` as `BUI_AUDIO_SOUND` events. Their `text` is the event's name, such as `"press"`. Their `wav` and `samples` hold the clip at the context's sample rate, with the theme's `sound_volume` applied. Play them on a channel separate from speech, so neither cuts the other off. GUI sounds play whether or not speech is enabled.
+GUI sounds (`BUI_AUDIO_SOUND` events) are described in [Feedback](feedback.md).
 
 ## Customising BlueUI's own words
 
@@ -123,14 +88,25 @@ The few phrases BlueUI generates itself can be replaced, for example to translat
 static const bui_strings french = {
   "Élément {i} sur {n}",
   "Narrateur activé",
-  "Narrateur désactivé. Appuyez sur N pour le réactiver",
+  "Narrateur désactivé",
   "onglet",
   "Annulé",
   {"bouton", "onglet", "interrupteur", "curseur", "sélecteur", "texte", ""},
+  "OK",
+  "Narration disponible",
+  "Ce jeu peut lire ses menus et ses écrans à voix haute.",
+  "Activer le narrateur",
+  "Désactiver le narrateur",
+  "Manette déconnectée",
+  "Reconnectez-la, ou continuez avec le clavier et la souris.",
+  "Manette connectée",
+  "La manette est prête.",
 };
 bui_set_strings(ui, &french);
 ```
 
-`item_of` may use `{i}` and `{n}`. The pointers are kept, not copied, so the strings must outlive the context or the next call to `bui_set_strings`. The default `speech_off` line mentions the N key, so change it if the game binds speech differently.
+`bui_strings` also holds the words of BlueUI's built-in [modals](modals.md): `ok`, `narrator_title`, `narrator_text`, `narrator_enable`, `narrator_disable`, `pad_lost_title`, `pad_lost_text`, `pad_found_title` and `pad_found_text`.
+
+`item_of` may use `{i}` and `{n}`. The pointers are kept, not copied, so the strings must outlive the context or the next call to `bui_set_strings`.
 
 The bundled Flite voice speaks English only. Translated phrases need a speech engine for that language, fed from text-only mode.

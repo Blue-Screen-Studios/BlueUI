@@ -122,12 +122,14 @@ typedef enum bui_key {
   BUI_KEY_BACK,           /* Escape, B / Circle */
   BUI_KEY_TAB_NEXT,       /* the bumpers: always the tabs */
   BUI_KEY_TAB_PREV,
-  BUI_KEY_TOGGLE_SPEECH,  /* speech on and off */
   BUI_KEY_REPEAT,         /* the last line again */
   BUI_KEY_CANCEL_CAPTURE  /* a rebinding's wait given up (Escape, Start) */
 } bui_key;
 
 typedef enum bui_device { BUI_DEVICE_KEYBOARD, BUI_DEVICE_GAMEPAD } bui_device;
+
+/* A controller plugged in or out this frame (bui_input.gamepad_event). */
+typedef enum bui_gamepad_event { BUI_GAMEPAD_NONE, BUI_GAMEPAD_CONNECTED, BUI_GAMEPAD_DISCONNECTED } bui_gamepad_event;
 
 #define BUI_MAX_KEYS 32
 #define BUI_MAX_PRESSED 16
@@ -148,6 +150,15 @@ typedef struct bui_input {
   bui_device device;
   double time;           /* seconds, steady */
   bool speech_playing;   /* the game still playing a line BlueUI handed it (bui_next_audio) */
+  /* Controllers: whether one is connected now, and one plugged in or out
+   * this frame. BlueUI also notices `gamepad_connected` changing between
+   * frames, so reporting either is enough. They drive the controller modals
+   * (bui_set_controller_modals). */
+  bool gamepad_connected;
+  bui_gamepad_event gamepad_event;
+  /* The screen's size in pixels, for centring modals (0: the extent of the
+   * frame's geometry). */
+  bui_vec2 screen_size;
 } bui_input;
 
 BUI_API void bui_input_clear(bui_input* in);
@@ -202,6 +213,43 @@ typedef struct bui_hints {
   const char* gamepad BUI_ZERO;   /* (NULL: the keyboard's) */
 } bui_hints;
 
+/* ------------------------------------------------------------- events */
+
+/* What happened in the UI this frame, for feedback: a sound from the
+ * theme's pack and a rumble from the theme's patterns. BlueUI picks the
+ * event itself: widgets, focus changes and screen changes trigger them,
+ * and bui_trigger lets a game's own widgets do the same. There is at most
+ * one event per frame. When several happen together, one the game asked
+ * for wins; then the most specific (in order: denied, back, on/off, tab,
+ * screen, press, change, move). */
+typedef enum bui_event {
+  BUI_EVENT_MOVE,   /* the focus moved, or the mouse entered an item */
+  BUI_EVENT_PRESS,  /* an item was pressed */
+  BUI_EVENT_BACK,   /* a back item was pressed (Escape, B, or the item itself) */
+  BUI_EVENT_CHANGE, /* a value changed: a slider, a choice, a custom item's value */
+  BUI_EVENT_ON,     /* a toggle switched on; a foldout opened */
+  BUI_EVENT_OFF,    /* a toggle switched off; a foldout closed */
+  BUI_EVENT_TAB,    /* the tab or page changed */
+  BUI_EVENT_SCREEN, /* a new screen was shown */
+  BUI_EVENT_DENIED, /* a disabled item was pressed or stepped */
+  BUI_EVENT_COUNT
+} bui_event;
+
+/* A controller rumble: timings only. BlueUI never touches a controller;
+ * the game plays the steps in order on its own motors. */
+#define BUI_RUMBLE_MAX_STEPS 4
+
+typedef struct bui_rumble_step {
+  float low;   /* the low-frequency (heavy) motor, 0..1 */
+  float high;  /* the high-frequency (light) motor, 0..1 */
+  float ms;    /* how long, in milliseconds */
+} bui_rumble_step;
+
+typedef struct bui_rumble {
+  bui_rumble_step steps[BUI_RUMBLE_MAX_STEPS];
+  int step_count;  /* 0: no rumble */
+} bui_rumble;
+
 /* ----------------------------------------------------------------- state */
 
 /* An item as it was at the last frame's end. */
@@ -229,9 +277,19 @@ typedef struct bui_state {
   const char* last_line; /* the last line given to the voice */
   bool navigating;       /* the keys moving the focus (outlined); else the mouse */
   bool speech_enabled;
-  bool speech_toggled;   /* switched this frame (its key, or bui_set_speech_enabled's announcing) */
+  bool speech_toggled;   /* switched this frame (the narration modal, or bui_set_speech_enabled's announcing) */
   bool back_pressed;     /* Back pressed, and no item took it */
   bui_device device;
+  /* This frame's UI event, if there was one, and its rumble: set only while
+   * a controller is in use (device is BUI_DEVICE_GAMEPAD) and the theme has
+   * a rumble pack, already scaled by its rumble_strength. Play it on the
+   * controller from this frame; a new rumble replaces one still playing. */
+  bool has_event;
+  bui_event event;
+  bool has_rumble;
+  bui_rumble rumble;
+  const char* modal;     /* the modal shown, by id (NULL: none) */
+  bool gamepad_connected;
 } bui_state;
 
 /* --------------------------------------------------------------- speech */
@@ -272,9 +330,26 @@ typedef struct bui_strings {
   const char* tab;       /* "Settings, Audio tab" */
   const char* cancelled;
   const char* kinds[BUI_KIND_COUNT];
+  /* The built-in modals' words. */
+  const char* ok;                  /* "OK" */
+  const char* narrator_title;      /* "Narration available" */
+  const char* narrator_text;       /* "This game can read its menus and screens aloud." */
+  const char* narrator_enable;     /* "Enable narrator" */
+  const char* narrator_disable;    /* "Disable narrator" */
+  const char* pad_lost_title;      /* "Controller disconnected" */
+  const char* pad_lost_text;       /* "Reconnect it, or carry on with the keyboard and mouse." */
+  const char* pad_found_title;     /* "Controller connected" */
+  const char* pad_found_text;      /* "The controller is ready to use." */
 } bui_strings;
 
-/* ----------------------------------------------------------- GUI sounds */
+/* Which controller changes open a modal. */
+typedef enum bui_controller_modals {
+  BUI_CONTROLLER_MODALS_DISCONNECT, /* "Controller disconnected" only (the default) */
+  BUI_CONTROLLER_MODALS_ALL,        /* that, and "Controller connected" */
+  BUI_CONTROLLER_MODALS_NONE
+} bui_controller_modals;
+
+/* ----------------------------------------------------- sounds and rumble */
 
 /* The built-in GUI sound packs, chosen in the theme. They are made in code
  * when a context is created: no sound files are shipped or loaded. */
@@ -284,6 +359,15 @@ typedef enum bui_sound_pack {
   BUI_SOUNDS_CRISP, /* clicks and square-wave ticks */
   BUI_SOUND_PACK_COUNT
 } bui_sound_pack;
+
+/* The built-in rumble packs, chosen in the theme: a pattern per event,
+ * handed to the game as timings (bui_state.rumble). */
+typedef enum bui_rumble_pack {
+  BUI_RUMBLE_NONE,  /* no rumble (the default theme's) */
+  BUI_RUMBLE_SOFT,  /* gentle, rounded pulses, mostly the heavy motor */
+  BUI_RUMBLE_CRISP, /* short, sharp ticks, mostly the light motor */
+  BUI_RUMBLE_PACK_COUNT
+} bui_rumble_pack;
 
 /* ---------------------------------------------------------------- theme */
 
@@ -316,9 +400,14 @@ typedef struct bui_theme {
    * colour, thickness and gap from the item. */
   bui_color focus;
   float focus_width, focus_gap;
+  /* Behind a modal: drawn over the whole screen. */
+  bui_color backdrop;
   /* The GUI sounds: which built-in pack plays, and how loud (0..1). */
   bui_sound_pack sound_pack;
   float sound_volume;
+  /* Controller rumble: which built-in pack, and how strong (0..1). */
+  bui_rumble_pack rumble_pack;
+  float rumble_strength;
 } bui_theme;
 
 /* BlueUI's own look: deep blue panels, a bright blue accent, and a warm
@@ -332,6 +421,11 @@ typedef struct bui_config {
   float speech_rate BUI_ZERO;     /* how fast it speaks (0: 1.15; 1: the voice's own) */
   bool no_voice BUI_ZERO;         /* lines as text only (tests; a screen reader of the game's) */
   const bui_theme* theme BUI_ZERO; /* the look (copied; NULL: bui_default_theme()) */
+  /* Unless true, the first frame shows a modal offering narration: [Enable
+   * narrator] [Disable narrator]. It is spoken even if speech is off, and
+   * the choice switches speech (bui_state.speech_toggled that frame). */
+  bool skip_narrator_support_modal BUI_ZERO;
+  bui_controller_modals controller_modals BUI_ZERO;
 } bui_config;
 
 typedef struct bui_context bui_context;
@@ -381,9 +475,9 @@ BUI_API void bui_announce(bui_context* ui, const char* text, bui_priority priori
 BUI_API void bui_say(bui_context* ui, const char* text, bool queued);
 BUI_API void bui_stop_speech(bui_context* ui);
 
-/* Speech on or off (the game's setting: off, nothing's said). Toggled by
- * BUI_KEY_TOGGLE_SPEECH, its line said either way. `announce`: said as the
- * key's would be ("Narrator on. Where it is"). */
+/* Speech on or off (the game's setting: off, nothing's said; the narration
+ * modal's choice switches it too). `announce`: the change said ("Narrator
+ * on. Where it is", or "Narrator off"), and speech_toggled that frame. */
 BUI_API void bui_set_speech_enabled(bui_context* ui, bool on, bool announce);
 BUI_API bool bui_speech_enabled(const bui_context* ui);
 
@@ -439,30 +533,32 @@ BUI_API const char* bui_format(bui_context* ui, const char* fmt, ...)
 #endif
     ;
 
-/* ----------------------------------------------------------- GUI events */
+/* --------------------------------------------------------------- modals */
 
-/* What a GUI sound marks. BlueUI picks the event itself: widgets, focus
- * changes and screen changes trigger them, and bui_play_sound lets a
- * game's own widgets do the same. At most one sound plays per frame. When
- * several events happen together, a sound the game asked for wins; then
- * the most specific (in order: denied, back, on/off, tab, screen, press,
- * change, move). */
-typedef enum bui_sound {
-  BUI_SOUND_MOVE,   /* the focus moved, or the mouse entered an item */
-  BUI_SOUND_PRESS,  /* an item was pressed */
-  BUI_SOUND_BACK,   /* a back item was pressed (Escape, B, or the item itself) */
-  BUI_SOUND_CHANGE, /* a value changed: a slider, a choice, a custom item's value */
-  BUI_SOUND_ON,     /* a toggle switched on; a foldout opened */
-  BUI_SOUND_OFF,    /* a toggle switched off; a foldout closed */
-  BUI_SOUND_TAB,    /* the tab or page changed */
-  BUI_SOUND_SCREEN, /* a new screen was shown */
-  BUI_SOUND_DENIED, /* a disabled item was pressed or stepped */
-  BUI_SOUND_COUNT
-} bui_sound;
+/* A modal: a window over the game's screen with a message and buttons.
+ * While one is shown, the game's screen still draws but takes no input; the
+ * modal has the focus, is spoken ("its title. its message. its first
+ * button..."), and is answered with a click, Enter or A, or Back (its last
+ * button). Then focus returns to where it was. Modals opened together are
+ * shown one after another. */
+#define BUI_MODAL_NARRATOR "bui.narrator"     /* buttons: 0 enable, 1 disable */
+#define BUI_MODAL_CONTROLLER "bui.controller" /* buttons: 0 OK */
 
-/* Plays an event's sound from the theme's pack at this frame's end, in
- * place of the one BlueUI chose itself. */
-BUI_API void bui_play_sound(bui_context* ui, bui_sound sound);
+/* Opens a modal (`id` under 64 bytes; `buttons` NULL or count 0: one "OK").
+ * Strings are copied. Opening one already open replaces it. */
+BUI_API void bui_open_modal(bui_context* ui, const char* id, const char* title, const char* message, const char* const* buttons,
+                            int count);
+BUI_API void bui_close_modal(bui_context* ui, const char* id);
+BUI_API bool bui_modal_open(const bui_context* ui, const char* id); /* (NULL: any) */
+/* Once a modal is answered: true a single time, with the button chosen. */
+BUI_API bool bui_take_modal_result(bui_context* ui, const char* id, int* button);
+BUI_API void bui_set_controller_modals(bui_context* ui, bui_controller_modals which);
+
+/* ------------------------------------------------------------- feedback */
+
+/* Plays an event's sound and rumble from the theme at this frame's end, in
+ * place of the event BlueUI chose itself. */
+BUI_API void bui_trigger(bui_context* ui, bui_event event);
 
 /* ----------------------------------------------------------------- font */
 
