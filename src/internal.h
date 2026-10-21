@@ -54,6 +54,27 @@ void bui__voice_stop(bui__voice* v);
 bool bui__voice_busy(bui__voice* v); /* (still to be handed over) */
 bool bui__voice_next(bui__voice* v, bui_audio* out);
 bool bui__voice_synthesize(bui__voice* v, const char* text, bui_audio* out);
+int bui__voice_rate(const bui__voice* v);
+/* An event handed to the game, after those before it. */
+void bui__voice_push(bui__voice* v, bui_audio a);
+/* A WAV round mono samples (-1..1), 16-bit, at `rate`. */
+bool bui__make_wav(const char* text, const float* pcm, size_t n, int rate, bui_audio* a);
+
+/* ----------------------------------------------------------- GUI sounds */
+
+typedef struct bui__pack {
+  float* pcm[BUI_SOUND_COUNT]; /* at the context's rate (NULL: silent) */
+  size_t count[BUI_SOUND_COUNT];
+} bui__pack;
+
+/* The built-in packs, made at the context's rate (and let go of). */
+void bui__make_packs(bui_context* ui);
+void bui__free_packs(bui_context* ui);
+/* An event BlueUI noticed itself: kept if it's the frame's most specific,
+ * unless the game asked for a sound (bui_play_sound) this frame. */
+void bui__auto_sound(bui_context* ui, bui_sound sound);
+/* The frame's sound (the most specific asked for), handed over. */
+void bui__emit_sound(bui_context* ui);
 
 /* -------------------------------------------------------------- context */
 
@@ -110,6 +131,12 @@ struct bui_context {
   double capture_until;
   bool has_captured, capture_cancelled;
   int64_t captured;
+  /* GUI sounds. */
+  bui__pack packs[BUI_SOUND_PACK_COUNT];
+  int pending_sound; /* (-1: none) */
+  bool sound_requested;
+  double last_change;
+  char sound_focus_id[BUI_ID_MAX];
   /* Speech. */
   bui__str events, spoken_where, spoken_focus_id, last_line;
   bool holding, hold_heard;

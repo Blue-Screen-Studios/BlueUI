@@ -10,7 +10,7 @@ BlueUI does not own a window, a renderer or an audio device. Each frame the game
 |---|---|---|
 | **UI state** | `bui_get_state` | Read the focused item, every item's value and position, and the last line spoken. |
 | **Geometry** | `bui_get_geometry` | Draw a list of coloured rectangles with any renderer. |
-| **Audio** | `bui_next_audio` | Play WAV buffers of synthesized speech through the game's own mixer. |
+| **Audio** | `bui_next_audio` | Play WAV buffers of synthesized speech, and GUI sounds, through the game's own mixer. |
 
 ## Features
 
@@ -20,6 +20,7 @@ BlueUI does not own a window, a renderer or an audio device. Each frame the game
 - **Change detection.** When a value changes, by input or by the game's own code, only the new value is spoken.
 - **Platform independent.** The library has no dependency on SDL or any windowing or audio API. The game translates its own events into a plain `bui_input` struct.
 - **Renderer independent.** Output is a flat list of rectangles, optionally textured, with a built-in 5×7 bitmap font.
+- **GUI sounds.** Moving, pressing, toggling, changing values, switching tabs and pressing disabled items can each play a sound. The theme picks a built-in pack (None, Soft or Crisp). The packs are generated in code, so no sound files are shipped.
 - **Themed widgets.** Includes buttons, tab bars, toggles, choices, sliders, stepped sliders, foldouts, rebinding capture and scroll views. Each game passes one `bui_theme` (colours, sizes, focus outline) and every widget follows it. The default theme is blue.
 - **Testable.** Menus can be tested by what is said and focused, not by pixel positions. Text-only mode makes tests deterministic.
 - **C11 with a small surface.** A single shared library exporting only `bui_*` symbols, and headers that work from C and C++.
@@ -100,7 +101,7 @@ To use BlueUI in a game, add it with `add_subdirectory` or `FetchContent` and li
 | [Getting started](docs/getting-started.md) | A complete frame loop: input, declaring a screen, drawing, playing speech. |
 | [Concepts](docs/concepts.md) | Immediate mode, ids, focus and navigation, what is spoken and when, memory lifetimes, threading. |
 | [Widgets](docs/widgets.md) | Themes, every built-in widget, and building custom widgets with `bui_declare`. |
-| [Speech and audio](docs/speech-and-audio.md) | The voice, the audio queue, the WAV format, priorities, text-only mode. |
+| [Speech and audio](docs/speech-and-audio.md) | The voice, the audio queue, the WAV format, priorities, text-only mode, GUI sounds and sound packs. |
 | [Integration](docs/integration.md) | CMake, shared and static builds, shipping, C++ use, testing a game's menus. |
 | [API reference](docs/api-reference.md) | Every type and function. |
 

@@ -6,7 +6,7 @@ All widgets take the context, a unique id and a rectangle in pixels, and draw wi
 
 ## Themes
 
-A `bui_theme` is a game's whole look: every colour, the size multiplier, and the focus outline. Each game defines its theme once and passes it to BlueUI. Widgets take no styling arguments.
+A `bui_theme` is a game's whole look and feel: every colour, the size multiplier, the focus outline, and which built-in [GUI sound pack](speech-and-audio.md#gui-sounds) plays (None, Soft or Crisp). Each game defines its theme once and passes it to BlueUI. Widgets take no styling arguments.
 
 ```c
 bui_theme theme = bui_default_theme();      /* start from BlueUI's blue */

@@ -19,6 +19,7 @@ Every function takes the context as its first argument unless noted. Strings pas
 - [Capture](#capture)
 - [Speech](#speech)
 - [Audio](#audio)
+- [GUI sounds](#gui-sounds)
 - [Drawing and text](#drawing-and-text)
 - [Widgets](#widgets)
 
@@ -122,6 +123,7 @@ typedef struct bui_strings {
 | `button_edge`, `button`, `button_hot`, `button_text`, `button_text_off`, `button_edged` | Buttons, including button rows. |
 | `control_width`, `arrow_width`, `blurb_at` | Form row layout. |
 | `focus`, `focus_width`, `focus_gap` | The focus outline: colour, thickness, distance from the item. |
+| `sound_pack`, `sound_volume` | The built-in GUI sound pack (`BUI_SOUNDS_NONE` by default, `BUI_SOUNDS_SOFT` or `BUI_SOUNDS_CRISP`) and its volume, 0 to 1. |
 
 ---
 
@@ -323,8 +325,8 @@ Returned by `const bui_state* bui_get_state(const bui_context* ui)`. It describe
 
 | Field | Description |
 |---|---|
-| `op` | `BUI_AUDIO_PLAY`, `BUI_AUDIO_QUEUE` or `BUI_AUDIO_STOP`. |
-| `text` | The line. `NULL` for a stop. |
+| `op` | `BUI_AUDIO_PLAY`, `BUI_AUDIO_QUEUE` or `BUI_AUDIO_STOP` for speech; `BUI_AUDIO_SOUND` for a GUI sound. |
+| `text` | The line, or a GUI sound's event name. `NULL` for a stop. |
 | `wav`, `wav_size` | A WAV file in memory: RIFF, PCM, 16-bit, mono. `NULL` for a stop or in text-only mode. |
 | `samples`, `sample_count` | The samples inside `wav`. |
 | `sample_rate` | Samples per second. |
@@ -336,6 +338,26 @@ Returned by `const bui_state* bui_get_state(const bui_context* ui)`. It describe
 | `bool bui_next_audio(bui_context* ui, bui_audio* out)` | Takes the next event. True if there was one; the caller then owns it. |
 | `void bui_audio_free(bui_audio* audio)` | Frees an event and zeroes it. |
 | `bool bui_synthesize(bui_context* ui, const char* text, bui_audio* out)` | Synthesizes a line synchronously. False without a voice. |
+
+---
+
+## GUI sounds
+
+See [Speech and audio](speech-and-audio.md#gui-sounds).
+
+### `bui_sound`
+
+`BUI_SOUND_MOVE`, `BUI_SOUND_PRESS`, `BUI_SOUND_BACK`, `BUI_SOUND_CHANGE`, `BUI_SOUND_ON`, `BUI_SOUND_OFF`, `BUI_SOUND_TAB`, `BUI_SOUND_SCREEN`, `BUI_SOUND_DENIED`; `BUI_SOUND_COUNT`.
+
+### `bui_sound_pack`
+
+`BUI_SOUNDS_NONE`, `BUI_SOUNDS_SOFT`, `BUI_SOUNDS_CRISP`; `BUI_SOUND_PACK_COUNT`. Chosen in `bui_theme.sound_pack`.
+
+### Functions
+
+| Function | Description |
+|---|---|
+| `void bui_play_sound(bui_context* ui, bui_sound sound)` | Plays an event's sound at this frame's end, in place of BlueUI's own choice. |
 
 ---
 

@@ -27,6 +27,7 @@ bui_theme bui_default_theme(void) {
   t.button_edged = true;
   t.control_width = 120.0f, t.arrow_width = 11.0f, t.blurb_at = 130.0f;
   t.focus = bui_rgb(1.0f, 0.86f, 0.2f), t.focus_width = 1.0f, t.focus_gap = 1.0f;
+  t.sound_pack = BUI_SOUNDS_NONE, t.sound_volume = 0.8f;
   return t;
 }
 
@@ -142,6 +143,7 @@ bool bui_tab_bar(bui_context* ui, const char* id, bui_rect area, const char* con
   }
   bui_fill(ui, bui_rect_make(area.x0, area.y1, area.x1, area.y1 + p), t->tab_on);
   bui_page(ui, names[clampi(*current, 0, n - 1)]);
+  if (*current != was) bui__auto_sound(ui, BUI_SOUND_TAB);
   return *current != was;
 }
 
@@ -179,7 +181,10 @@ bool bui_toggle_row_ex(bui_context* ui, const char* id, bui_rect row, const bui_
   const bool was = *on;
   if (r.activated || r.step) *on = !*on;
   state = *on ? on_option : off;
-  if (*on != was) bui_revise(ui, state->shown, toggle_said(ui, f, state));
+  if (*on != was) {
+    bui_revise(ui, state->shown, toggle_said(ui, f, state));
+    bui__auto_sound(ui, *on ? BUI_SOUND_ON : BUI_SOUND_OFF);
+  }
   row_text(ui, t, &rp, f, toggle_described(f, state), NULL, r.hovered);
   if (!bui_visible(ui, row)) return *on != was;
   const bool hot = !f->disabled && r.hovered;
@@ -328,6 +333,7 @@ bool bui_foldout_row(bui_context* ui, const char* id, bui_rect row, const bui_fi
   if (r.activated) {
     *open = !*open;
     bui_revise(ui, *open ? "open" : "shut", foldout_said(ui, f, *open));
+    bui__auto_sound(ui, *open ? BUI_SOUND_ON : BUI_SOUND_OFF);
   }
   if (!bui_visible(ui, row)) return r.activated;
   const float ty = roundf(0.5f * (row.y0 + row.y1 - BUI_GLYPH_H * p));

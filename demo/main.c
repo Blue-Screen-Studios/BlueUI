@@ -104,13 +104,18 @@ static void render(SDL_Renderer* r, const bui_draw_cmd* cmds, size_t n) {
   }
 }
 
-/* BlueUI's audio events into the stream: PLAY and STOP clear what's queued. */
-static void play(SDL_AudioStream* stream, bui_context* ui) {
+/* BlueUI's audio events: speech into one stream (PLAY and STOP clear what's
+ * queued), GUI sounds into another, so they never cut speech off. */
+static void play(SDL_AudioStream* speech, SDL_AudioStream* sounds, bui_context* ui) {
   bui_audio a;
   while (bui_next_audio(ui, &a)) {
-    if (stream && (a.op == BUI_AUDIO_STOP || a.op == BUI_AUDIO_PLAY)) SDL_ClearAudioStream(stream);
-    if (stream && a.samples) SDL_PutAudioStreamData(stream, a.samples, (int)(a.sample_count * sizeof(int16_t)));
-    if (a.text && !a.samples) printf("(no voice) %s\n", a.text);
+    if (a.op == BUI_AUDIO_SOUND) {
+      if (sounds) SDL_ClearAudioStream(sounds), SDL_PutAudioStreamData(sounds, a.samples, (int)(a.sample_count * sizeof(int16_t)));
+    } else {
+      if (speech && (a.op == BUI_AUDIO_STOP || a.op == BUI_AUDIO_PLAY)) SDL_ClearAudioStream(speech);
+      if (speech && a.samples) SDL_PutAudioStreamData(speech, a.samples, (int)(a.sample_count * sizeof(int16_t)));
+      if (a.text && !a.samples) printf("(no voice) %s\n", a.text);
+    }
     bui_audio_free(&a);
   }
 }
@@ -183,11 +188,12 @@ enum {
   PAGE_CUSTOM,
   PAGE_REBINDING,
   PAGE_SPEECH,
+  PAGE_SOUNDS,
   PAGE_THEMES,
   PAGE_COUNT
 };
 static const char* const kPages[PAGE_COUNT] = {"Buttons", "Toggles", "Choices", "Sliders", "Tabs", "Foldouts",
-                                               "Scrolling", "Custom items", "Rebinding", "Speech", "Themes"};
+                                               "Scrolling", "Custom items", "Rebinding", "Speech", "Sounds", "Themes"};
 
 typedef struct demo {
   bool running;
@@ -202,6 +208,7 @@ typedef struct demo {
   int swatch, stepper;
   int64_t binding[3];
   int theme, size;
+  int sounds;  /* the theme's sound pack: a bui_sound_pack */
 } demo;
 
 /* Rows down a page, from (x0, y) to x1, in font pixels times `p`. */
@@ -514,6 +521,27 @@ static void page_speech(bui_context* ui, layout* l) {
   if (bui_button_row(ui, "always", row(l, 18.0f), &always, "SAY")) bui_say(ui, "This line is spoken even with the narrator off", false);
 }
 
+static void page_sounds(bui_context* ui, demo* d, layout* l) {
+  explain(ui, l, "about",
+          "GUI sounds mark what happens: the focus moving, a press, a toggle switching, a value changing, a new tab or screen, "
+          "and pressing something disabled. A game picks a sound pack in its theme: none, soft or crisp. The packs are built "
+          "into BlueUI and made in code, so no sound files are needed.");
+  heading(ui, l, "EXAMPLE PACKS");
+  const bui_field pack = {"Example sound pack"};
+  const bui_option packs[] = {{"NONE", "No GUI sounds"}, {"SOFT", "Rounded tones"}, {"CRISP", "Clicks and ticks"}};
+  bui_choice_row(ui, "pack", row(l, 18.0f), &pack, &d->sounds, packs, 3);
+  heading(ui, l, "TRY EACH SOUND");
+  static const char* const names[] = {"MOVE", "PRESS", "BACK", "CHANGE", "ON", "OFF", "TAB", "SCREEN", "DENIED"};
+  const float p = l->p, w = 64.0f * p;
+  for (int s = 0; s < BUI_SOUND_COUNT; ++s) {
+    if (s % 5 == 0) row(l, 18.0f);
+    const float x = l->x0 + (float)(s % 5) * (w + 6 * p), y = l->y - 18.0f * p;
+    bui_button_opts o = {0};
+    o.spoken = bui_format(ui, "Play the %s sound", names[s]);
+    if (bui_button(ui, bui_format(ui, "sound.%d", s), names[s], bui_rect_make(x, y, x + w, y + 16.0f * p), &o)) bui_play_sound(ui, (bui_sound)s);
+  }
+}
+
 static void page_themes(bui_context* ui, demo* d, layout* l) {
   explain(ui, l, "about",
           "A theme sets every colour and size BlueUI draws, including the focus outline. A game passes its own theme once and "
@@ -562,6 +590,7 @@ static void declare(bui_context* ui, demo* d, int w, int h) {
     case PAGE_CUSTOM: page_custom(ui, d, &l); break;
     case PAGE_REBINDING: page_rebinding(ui, d, &l); break;
     case PAGE_SPEECH: page_speech(ui, &l); break;
+    case PAGE_SOUNDS: page_sounds(ui, d, &l); break;
     case PAGE_THEMES: page_themes(ui, d, &l); break;
   }
   bui_page(ui, kPages[d->page]);  /* (after the page: the Tabs page's example tab bar names a page too) */
@@ -607,7 +636,9 @@ int main(void) {
   if (!SDL_CreateWindowAndRenderer("BlueUI demo", 1280, 720, SDL_WINDOW_RESIZABLE, &win, &ren)) return 1;
   const SDL_AudioSpec spec = {SDL_AUDIO_S16, 1, RATE};
   SDL_AudioStream* stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+  SDL_AudioStream* sounds = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
   if (stream) SDL_ResumeAudioStreamDevice(stream);
+  if (sounds) SDL_ResumeAudioStreamDevice(sounds);
 
   const bui_theme themes[4] = {bui_default_theme(), green_theme(), red_theme(), contrast_theme()};
   bui_config config = {0};
@@ -621,7 +652,7 @@ int main(void) {
   bui_announce(ui, "Welcome to the BlueUI demo. Press N to switch the narrator off.", BUI_SAY_HOLD);
 
   demo d = {0};
-  d.running = true, d.slider = 0.5f, d.spoken_slider = 1.0f, d.stops = 1, d.stepper = 5, d.size = 1;
+  d.running = true, d.slider = 0.5f, d.spoken_slider = 1.0f, d.stops = 1, d.stepper = 5, d.size = 1, d.sounds = BUI_SOUNDS_SOFT;
   bui_input_clear(&input);
 
   while (d.running) {
@@ -658,6 +689,7 @@ int main(void) {
     SDL_GetRenderOutputSize(ren, &w, &h);
     bui_theme theme = themes[d.theme];
     theme.pixel = fmaxf(1.0f, roundf(fminf((float)h / 360.0f, (float)w / 640.0f)) + (float)(d.size - 1));
+    theme.sound_pack = (bui_sound_pack)d.sounds;
     bui_set_theme(ui, &theme);
 
     bui_begin_frame(ui, &input);
@@ -665,7 +697,7 @@ int main(void) {
     bui_input_clear(&input), input.device = device, click = false;
     declare(ui, &d, w, h);
     bui_end_frame(ui);
-    play(stream, ui);
+    play(stream, sounds, ui);
 
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
@@ -676,6 +708,7 @@ int main(void) {
   }
   bui_destroy(ui);
   if (stream) SDL_DestroyAudioStream(stream);
+  if (sounds) SDL_DestroyAudioStream(sounds);
   SDL_DestroyRenderer(ren);
   SDL_DestroyWindow(win);
   SDL_Quit();

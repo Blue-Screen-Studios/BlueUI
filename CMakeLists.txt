@@ -64,7 +64,7 @@ if(BLUEUI_WITH_FLITE)
 endif()
 
 # ------------------------------------------------------------ the library
-add_library(blueui ${BLUEUI_LINKAGE} src/context.c src/voice.c src/font.c src/widgets.c)
+add_library(blueui ${BLUEUI_LINKAGE} src/context.c src/voice.c src/font.c src/widgets.c src/sounds.c)
 target_include_directories(blueui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set_target_properties(blueui PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON

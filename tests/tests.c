@@ -364,6 +364,101 @@ static void theme_tests(void) {
   harness_free(&h);
 }
 
+/* ----------------------------------------------------------- GUI sounds */
+
+/* The sounds handed over in the last frame: their event names, joined. */
+static char heard[256];
+
+static void sound_frame_with(harness* h, const bui_key* keys, int n, bui_input in) {
+  for (int k = 0; k < n; ++k) bui_input_key(&in, keys[k]);
+  in.time = h->time += 1.0 / 60.0;
+  bui_begin_frame(h->ui, &in);
+  h->screen(h);
+  bui_end_frame(h->ui);
+  heard[0] = 0;
+  bui_audio a;
+  while (bui_next_audio(h->ui, &a)) {
+    if (a.op == BUI_AUDIO_SOUND) {
+      if (heard[0]) strcat(heard, " ");
+      strncat(heard, a.text, sizeof(heard) - strlen(heard) - 2);
+    }
+    bui_audio_free(&a);
+  }
+}
+static void sound_key(harness* h, bui_key k) { sound_frame_with(h, &k, 1, none()); }
+
+static void sounds_screen(harness* h) {
+  bui_context* ui = h->ui;
+  bui_screen(ui, "sounds", "Sounds", NULL);
+  bui_button(ui, "a", "A", row_at(0), NULL);
+  const bui_field toggle = {"Toggle", NULL, NULL, false}, slider = {"Slider", NULL, NULL, false};
+  bui_toggle_row(ui, "toggle", row_at(1), &toggle, &h->full, NULL, NULL);
+  bui_slider_row(ui, "slider", row_at(2), &slider, &h->strength, 0, 1, 0.1f, percent, NULL, NULL);
+  const bui_button_opts off = {NULL, true, false, 0.0f};
+  bui_button(ui, "off", "OFF", row_at(3), &off);
+}
+
+static void sound_tests(void) {
+  printf("GUI sounds\n");
+  harness h;
+  harness_init(&h, sounds_screen);
+  h.strength = 0.5f;
+  sound_frame_with(&h, NULL, 0, none());
+  expect(heard[0] == 0, "the default theme: no sounds", NULL);
+  bui_theme t = bui_default_theme();
+  t.sound_pack = BUI_SOUNDS_SOFT;
+  bui_set_theme(h.ui, &t);
+  h.screen = other_screen, sound_frame_with(&h, NULL, 0, none());
+  h.screen = sounds_screen, sound_frame_with(&h, NULL, 0, none());
+  expect(strcmp(heard, "screen") == 0, "a new screen", heard);
+  sound_key(&h, BUI_KEY_DOWN);
+  expect(strcmp(heard, "move") == 0, "the focus shown: move", heard);
+  sound_key(&h, BUI_KEY_ACTIVATE);
+  expect(strcmp(heard, "press") == 0, "a button pressed: press", heard);
+  sound_key(&h, BUI_KEY_DOWN), sound_key(&h, BUI_KEY_ACTIVATE);
+  expect(strcmp(heard, "on") == 0 && h.full, "a toggle switched on: on, not press", heard);
+  sound_key(&h, BUI_KEY_ACTIVATE);
+  expect(strcmp(heard, "off") == 0, "and off: off", heard);
+  sound_key(&h, BUI_KEY_DOWN), sound_key(&h, BUI_KEY_RIGHT);
+  expect(strcmp(heard, "change") == 0, "a slider stepped: change", heard);
+  sound_key(&h, BUI_KEY_DOWN), sound_key(&h, BUI_KEY_ACTIVATE);
+  expect(strcmp(heard, "denied") == 0, "a disabled button pressed: denied", heard);
+  /* A sound asked for wins over BlueUI's own choice; each pack's clips differ. */
+  bui_audio a = {0};
+  bui_play_sound(h.ui, BUI_SOUND_MOVE);
+  sound_key(&h, BUI_KEY_ACTIVATE);
+  expect(strcmp(heard, "move") == 0, "bui_play_sound: in place of BlueUI's choice", heard);
+  size_t lengths[BUI_SOUND_PACK_COUNT] = {0};
+  for (int p = BUI_SOUNDS_SOFT; p < BUI_SOUND_PACK_COUNT; ++p) {
+    t.sound_pack = (bui_sound_pack)p;
+    bui_set_theme(h.ui, &t);
+    bui_play_sound(h.ui, BUI_SOUND_PRESS);
+    bui_begin_frame(h.ui, NULL), h.screen(&h), bui_end_frame(h.ui);
+    while (bui_next_audio(h.ui, &a)) {
+      if (a.op == BUI_AUDIO_SOUND && a.sample_rate == 48000 && memcmp(a.wav, "RIFF", 4) == 0) lengths[p] = a.sample_count;
+      bui_audio_free(&a);
+    }
+  }
+  expect(lengths[BUI_SOUNDS_SOFT] > 0 && lengths[BUI_SOUNDS_CRISP] > 0 && lengths[BUI_SOUNDS_SOFT] != lengths[BUI_SOUNDS_CRISP],
+         "Soft and Crisp: built in, their own sounds, as WAVs at the context's rate", NULL);
+  t.sound_volume = 0.0f;
+  bui_set_theme(h.ui, &t);
+  sound_key(&h, BUI_KEY_UP);
+  expect(heard[0] == 0, "sound_volume 0: silent", NULL);
+  t.sound_volume = 0.8f, t.sound_pack = BUI_SOUNDS_SOFT;
+  bui_set_theme(h.ui, &t);
+  /* Sounds don't cut speech off, and play with the narrator off. */
+  bui_say(h.ui, "Speech", false);
+  bui_play_sound(h.ui, BUI_SOUND_MOVE);
+  bui_begin_frame(h.ui, NULL), h.screen(&h), bui_end_frame(h.ui);
+  int speech = 0, sounds = 0;
+  while (bui_next_audio(h.ui, &a)) speech += a.op == BUI_AUDIO_PLAY, sounds += a.op == BUI_AUDIO_SOUND, bui_audio_free(&a);
+  bui_set_speech_enabled(h.ui, false, false);
+  sound_key(&h, BUI_KEY_UP);
+  expect(speech == 1 && sounds == 1 && strcmp(heard, "move") == 0, "alongside speech; and with the narrator off", heard);
+  harness_free(&h);
+}
+
 /* -------------------------------------------------------------- voice */
 
 static void voice_tests(void) {
@@ -404,6 +499,7 @@ int main(void) {
   capture_tests();
   speech_tests();
   theme_tests();
+  sound_tests();
   voice_tests();
   printf(failures ? "%d failed\n" : "all passed\n", failures);
   return failures ? 1 : 0;

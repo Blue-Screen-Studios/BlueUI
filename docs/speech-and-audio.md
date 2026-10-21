@@ -1,6 +1,6 @@
 # Speech and audio
 
-BlueUI decides *what* to say and produces the audio. The game decides *how* to play it. Speech reaches the game as a queue of audio events, collected with `bui_next_audio`.
+BlueUI decides *what* to say and produces the audio. The game decides *how* to play it. Speech and GUI sounds reach the game as one queue of audio events, collected with `bui_next_audio`.
 
 ## The voice
 
@@ -29,6 +29,7 @@ Call this every frame, after `bui_end_frame`. Lines finish synthesising in the b
 | `BUI_AUDIO_PLAY` | Stop whatever speech is playing, then play this line. |
 | `BUI_AUDIO_QUEUE` | Play this line after the speech already playing or queued. |
 | `BUI_AUDIO_STOP` | Stop all speech now. Has no text or audio. |
+| `BUI_AUDIO_SOUND` | A [GUI sound](#gui-sounds). Play it alongside anything else; it never stops speech. |
 
 Every event except `STOP` has `text`, the line as written. With a voice, it also has:
 
@@ -74,6 +75,45 @@ With `bui_config.no_voice = true`, or a build with `BLUEUI_WITH_FLITE=OFF`, noth
 ## Synthesizing directly
 
 `bui_synthesize(ui, text, &out)` produces a line's WAV synchronously on the calling thread, using the same processing as spoken lines. It returns false when there is no voice. Free the result with `bui_audio_free`. It is useful for pre-rendering lines or measuring them in tests.
+
+## GUI sounds
+
+Besides speech, BlueUI can play short sounds that mark what happens on screen. The theme chooses a built-in *sound pack*:
+
+| `bui_sound_pack` | Sound |
+|---|---|
+| `BUI_SOUNDS_NONE` | No GUI sounds. The default theme's choice. |
+| `BUI_SOUNDS_SOFT` | Rounded sine tones. |
+| `BUI_SOUNDS_CRISP` | Clicks and square-wave ticks. |
+
+```c
+bui_theme theme = bui_default_theme();
+theme.sound_pack = BUI_SOUNDS_SOFT;
+theme.sound_volume = 0.8f;      /* 0..1 */
+```
+
+The packs are generated in code when a context is created, at the context's sample rate. BlueUI ships and loads no sound files.
+
+### Events
+
+| Event | Played when |
+|---|---|
+| `BUI_SOUND_MOVE` | The focus moves, or the mouse enters an item. |
+| `BUI_SOUND_PRESS` | An item is pressed. |
+| `BUI_SOUND_BACK` | A back item is pressed, by Escape, B or a click. |
+| `BUI_SOUND_CHANGE` | A value changes: a slider, a choice, or a custom item's `value`. While dragging, at most every 70 ms. |
+| `BUI_SOUND_ON`, `BUI_SOUND_OFF` | A toggle switches on or off; a foldout opens or closes. |
+| `BUI_SOUND_TAB` | The tab or page changes. |
+| `BUI_SOUND_SCREEN` | A new screen is shown. |
+| `BUI_SOUND_DENIED` | A disabled item is pressed or stepped. |
+
+At most one sound plays per frame. When several events happen together, the most specific wins. For example, a toggle being clicked plays *on*, not *press*. The order of precedence is: denied, back, on/off, tab, screen, press, change, move.
+
+Custom widgets get these sounds automatically through `bui_declare` and value-change detection. To choose a sound explicitly, call `bui_play_sound(ui, BUI_SOUND_ON)`. A requested sound replaces the one BlueUI chose for that frame.
+
+### Playing them
+
+GUI sounds arrive from `bui_next_audio` as `BUI_AUDIO_SOUND` events. Their `text` is the event's name, such as `"press"`. Their `wav` and `samples` hold the clip at the context's sample rate, with the theme's `sound_volume` applied. Play them on a channel separate from speech, so neither cuts the other off. GUI sounds play whether or not speech is enabled.
 
 ## Customising BlueUI's own words
 

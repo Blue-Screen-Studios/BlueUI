@@ -131,6 +131,7 @@ bui_context* bui_create(const bui_config* config) {
   bui_config c = {0};
   if (config) c = *config;
   ui->voice = bui__voice_create(&c);
+  bui__make_packs(ui);
   ui->strings = kStrings;
   ui->theme = c.theme ? *c.theme : bui_default_theme();
   ui->speech_on = true;
@@ -142,6 +143,7 @@ bui_context* bui_create(const bui_config* config) {
 void bui_destroy(bui_context* ui) {
   if (!ui) return;
   bui__voice_destroy(ui->voice);
+  bui__free_packs(ui);
   bui__arena_free(&ui->arenas[0]), bui__arena_free(&ui->arenas[1]);
   free(ui->draw), free(ui->entries), free(ui->found), free(ui->hinted), free(ui->scrolls);
   bui__str* strs[] = {&ui->screen_name,  &ui->page_name,   &ui->last_page_name,  &ui->hint_keyboard, &ui->hint_gamepad,
@@ -170,6 +172,7 @@ void bui_reset(bui_context* ui) {
   ui->has_captured = ui->capture_cancelled = false;
   ui->holding = ui->hold_heard = false;
   ui->speech_toggled = false;
+  ui->pending_sound = -1, ui->sound_requested = false, ui->last_change = -1e9, ui->sound_focus_id[0] = 0;
   update_state(ui);
 }
 
@@ -415,8 +418,12 @@ bui_result bui_declare(bui_context* ui, const char* id, const bui_item* it) {
       r.dragging = true;
       r.drag = clampf((in->mouse.x - it->track.x0) / (w > 1.0f ? w : 1.0f), 0.0f, 1.0f);
     }
-  } else if (r.focused) {
-    ui->pending_activate = false, ui->pending_step = 0;  /* (heard, not changed) */
+    if (r.activated) bui__auto_sound(ui, it->back ? BUI_SOUND_BACK : BUI_SOUND_PRESS);
+  } else {
+    /* (Pressed or stepped while disabled: heard, not changed.) */
+    const bool clicked = in->clicked && e->shown && bui_rect_contains(it->rect, in->click_at);
+    if (clicked || (r.focused && (ui->pending_activate || ui->pending_step))) bui__auto_sound(ui, BUI_SOUND_DENIED);
+    if (r.focused) ui->pending_activate = false, ui->pending_step = 0;
   }
   return r;
 }
@@ -643,6 +650,24 @@ void bui_end_frame(bui_context* ui) {
   if (said >= 0 && strcmp(said_id, bui__str_c(&ui->spoken_focus_id)) == 0) {
     for (size_t k = 0; k < ui->found_count; ++k)
       if (strcmp(ui->found[k].id, said_id) == 0) value_changed = strcmp(ui->found[k].value, ui->entries[said].item.value) != 0;
+  }
+
+  /* The frame's GUI sound: a new screen or page, the focus moved, a value changed. */
+  {
+    const bool new_screen = strcmp(ui->screen_id, ui->last_screen_id) != 0;
+    const bool same_item = said >= 0 && strcmp(said_id, ui->sound_focus_id) == 0;
+    if (new_screen) bui__auto_sound(ui, BUI_SOUND_SCREEN);
+    else if (arrived) bui__auto_sound(ui, BUI_SOUND_TAB);
+    else if (said >= 0 && !same_item) bui__auto_sound(ui, BUI_SOUND_MOVE);
+    /* (A value dragged changes every frame: at most one change sound every 70 ms.) */
+    if (same_item && in->time - ui->last_change > 0.07) {
+      for (size_t k = 0; k < ui->found_count; ++k)
+        if (strcmp(ui->found[k].id, said_id) == 0 && strcmp(ui->found[k].value, ui->entries[said].item.value) != 0)
+          bui__auto_sound(ui, BUI_SOUND_CHANGE);
+    }
+    copy_id(ui->sound_focus_id, said_id);
+    if (ui->pending_sound == BUI_SOUND_CHANGE) ui->last_change = in->time;
+    bui__emit_sound(ui);
   }
 
   /* The state: this frame's items. */

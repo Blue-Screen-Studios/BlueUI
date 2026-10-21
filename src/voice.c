@@ -63,14 +63,14 @@ static void drop_pending(bui__voice* v) {
   v->queued_count = 0;
   size_t keep = 0;
   for (size_t k = 0; k < v->out_count; ++k) {
-    if (v->out[k].op == BUI_AUDIO_STOP) v->out[keep++] = v->out[k];
+    if (v->out[k].op == BUI_AUDIO_STOP || v->out[k].op == BUI_AUDIO_SOUND) v->out[keep++] = v->out[k];
     else bui_audio_free(&v->out[k]);
   }
   v->out_count = keep;
 }
 
 /* A WAV round 16-bit mono samples (the buffer's own: the game's to free). */
-static bool make_wav(const char* text, const float* pcm, size_t n, int rate, bui_audio* a) {
+bool bui__make_wav(const char* text, const float* pcm, size_t n, int rate, bui_audio* a) {
   memset(a, 0, sizeof(*a));
   const size_t data = n * 2, size = 44 + data;
   uint8_t* w = malloc(size);
@@ -93,7 +93,7 @@ static bool make_wav(const char* text, const float* pcm, size_t n, int rate, bui
     f = f > 32767.0f ? 32767.0f : f < -32768.0f ? -32768.0f : f;
     s[i] = (int16_t)lrintf(f);
   }
-  a->text = dup(text);
+  a->text = text ? dup(text) : NULL;
   a->wav = w, a->wav_size = size;
   a->samples = s, a->sample_count = n, a->sample_rate = rate;
   return true;
@@ -158,7 +158,7 @@ static bool synthesize(bui__voice* v, const char* text, bui_audio* a) {
     }
     out[i] *= gain * e;
   }
-  const bool ok = make_wav(text, out, count, to, a);
+  const bool ok = bui__make_wav(text, out, count, to, a);
   free(out);
   return ok;
 }
@@ -239,6 +239,13 @@ void bui__voice_destroy(bui__voice* v) {
 }
 
 bool bui__voice_real(const bui__voice* v) { return v->flite != NULL; }
+int bui__voice_rate(const bui__voice* v) { return v->rate; }
+
+void bui__voice_push(bui__voice* v, bui_audio a) {
+  mtx_lock(&v->lock);
+  push_out(v, a);
+  mtx_unlock(&v->lock);
+}
 
 void bui__voice_say(bui__voice* v, const char* text, bool queued) {
   if (!text || !*text) return;
@@ -279,7 +286,7 @@ void bui__voice_stop(bui__voice* v) {
 bool bui__voice_busy(bui__voice* v) {
   mtx_lock(&v->lock);
   bool busy = v->waiting || v->working || v->queued_count > 0;
-  for (size_t k = 0; k < v->out_count; ++k) busy = busy || v->out[k].op != BUI_AUDIO_STOP;
+  for (size_t k = 0; k < v->out_count; ++k) busy = busy || v->out[k].op == BUI_AUDIO_PLAY || v->out[k].op == BUI_AUDIO_QUEUE;
   mtx_unlock(&v->lock);
   return busy;
 }

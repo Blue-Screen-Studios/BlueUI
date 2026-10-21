@@ -244,7 +244,12 @@ typedef enum bui_priority { BUI_SAY_NORMAL, BUI_SAY_INTERRUPT, BUI_SAY_QUEUE, BU
 
 /* What to do with it: play it at once (what's playing cut off), play it
  * after what's playing, or stop what's playing. */
-typedef enum bui_audio_op { BUI_AUDIO_PLAY, BUI_AUDIO_QUEUE, BUI_AUDIO_STOP } bui_audio_op;
+typedef enum bui_audio_op {
+  BUI_AUDIO_PLAY,  /* speech: play now, cutting off speech that is playing */
+  BUI_AUDIO_QUEUE, /* speech: play after the speech that is playing */
+  BUI_AUDIO_STOP,  /* speech: stop it */
+  BUI_AUDIO_SOUND  /* a GUI sound: play it alongside anything else (it never stops speech) */
+} bui_audio_op;
 
 /* A line, spoken: a WAV file in memory (RIFF, PCM, 16 bits, mono), its
  * samples inside it. The game's, once taken: bui_audio_free it. */
@@ -268,6 +273,17 @@ typedef struct bui_strings {
   const char* cancelled;
   const char* kinds[BUI_KIND_COUNT];
 } bui_strings;
+
+/* ----------------------------------------------------------- GUI sounds */
+
+/* The built-in GUI sound packs, chosen in the theme. They are made in code
+ * when a context is created: no sound files are shipped or loaded. */
+typedef enum bui_sound_pack {
+  BUI_SOUNDS_NONE,  /* no GUI sounds (the default theme's) */
+  BUI_SOUNDS_SOFT,  /* rounded sine tones */
+  BUI_SOUNDS_CRISP, /* clicks and square-wave ticks */
+  BUI_SOUND_PACK_COUNT
+} bui_sound_pack;
 
 /* ---------------------------------------------------------------- theme */
 
@@ -300,6 +316,9 @@ typedef struct bui_theme {
    * colour, thickness and gap from the item. */
   bui_color focus;
   float focus_width, focus_gap;
+  /* The GUI sounds: which built-in pack plays, and how loud (0..1). */
+  bui_sound_pack sound_pack;
+  float sound_volume;
 } bui_theme;
 
 /* BlueUI's own look: deep blue panels, a bright blue accent, and a warm
@@ -419,6 +438,31 @@ BUI_API const char* bui_format(bui_context* ui, const char* fmt, ...)
     __attribute__((format(printf, 2, 3)))
 #endif
     ;
+
+/* ----------------------------------------------------------- GUI events */
+
+/* What a GUI sound marks. BlueUI picks the event itself: widgets, focus
+ * changes and screen changes trigger them, and bui_play_sound lets a
+ * game's own widgets do the same. At most one sound plays per frame. When
+ * several events happen together, a sound the game asked for wins; then
+ * the most specific (in order: denied, back, on/off, tab, screen, press,
+ * change, move). */
+typedef enum bui_sound {
+  BUI_SOUND_MOVE,   /* the focus moved, or the mouse entered an item */
+  BUI_SOUND_PRESS,  /* an item was pressed */
+  BUI_SOUND_BACK,   /* a back item was pressed (Escape, B, or the item itself) */
+  BUI_SOUND_CHANGE, /* a value changed: a slider, a choice, a custom item's value */
+  BUI_SOUND_ON,     /* a toggle switched on; a foldout opened */
+  BUI_SOUND_OFF,    /* a toggle switched off; a foldout closed */
+  BUI_SOUND_TAB,    /* the tab or page changed */
+  BUI_SOUND_SCREEN, /* a new screen was shown */
+  BUI_SOUND_DENIED, /* a disabled item was pressed or stepped */
+  BUI_SOUND_COUNT
+} bui_sound;
+
+/* Plays an event's sound from the theme's pack at this frame's end, in
+ * place of the one BlueUI chose itself. */
+BUI_API void bui_play_sound(bui_context* ui, bui_sound sound);
 
 /* ----------------------------------------------------------------- font */
 
