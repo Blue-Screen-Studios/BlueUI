@@ -501,3 +501,6 @@ Declared in `<blueui/widgets.h>`. See [Widgets](widgets.md) for behaviour and ex
 | `int bui_grid_hit(opts, area, point)` | The cell under a point by its exact shape, else -1. |
 | `int bui_grid_neighbor(opts, index, dx, dy)` | The cell the arrow keys move to, else -1. |
 | `size_t bui_hex_rects(box, pointy, color, out, cap)` | A hexagon filling `box` as rectangles. |
+| `bui_pick bui_file_picker_show(ui, id, area, picker, title)` | `BUI_PICK_OPEN` while choosing, then `BUI_PICK_CHOSEN` (the path in `picker->chosen`) or `BUI_PICK_CANCELLED`. |
+| `void bui_file_picker_free(picker)` | Frees its entries. |
+| `void bui_path_parent(path, out, size)` | A folder's parent; a root stays as it is. |

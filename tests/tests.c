@@ -916,6 +916,57 @@ static void grid_tests(void) {
   harness_free(&h);
 }
 
+/* A modal's buttons: inside its window, side by side when they fit, else
+ * stacked (none past the screen's edge, none over another). */
+static void long_buttons_screen(harness* h) { bui_screen(h->ui, "s", "S", NULL); }
+
+static void modal_button_tests(void) {
+  printf("Modal buttons\n");
+  for (int stack = 0; stack < 2; ++stack) {
+    harness h;
+    harness_init(&h, long_buttons_screen);
+    const char* const wide[] = {"Import license file", "Paste license key", "Quit"};
+    const char* const wider[] = {"A very long first button label here", "Another very long second button label",
+                                 "And a third one that is long too", "Quit"};
+    bui_open_modal(h.ui, "m", "Title", "Some message.", stack ? wider : wide, stack ? 4 : 3);
+    bui_input in = none();
+    in.screen_size.x = 640, in.screen_size.y = 360;
+    frame_with(&h, NULL, 0, in);
+    const bui_state* st = bui_get_state(h.ui);
+    bool inside = true, apart = true, rows = true;
+    float y = -1.0f;
+    int n = 0;
+    for (size_t i = 0; i < st->item_count; ++i) {
+      const bui_rect r = st->items[i].rect;
+      if (strncmp(st->items[i].id, "bui.modal.", 10) != 0) continue;
+      inside = inside && r.x0 >= 0.0f && r.x1 <= 640.0f;
+      for (size_t j = 0; j < i; ++j)
+        if (strncmp(st->items[j].id, "bui.modal.", 10) == 0) {
+          const bui_rect o = st->items[j].rect;
+          apart = apart && (r.x0 >= o.x1 || r.x1 <= o.x0 || r.y0 >= o.y1 || r.y1 <= o.y0);
+        }
+      if (stack) rows = rows && r.y0 > y, y = r.y0;
+      ++n;
+    }
+    expect(n == (stack ? 4 : 3) && inside && apart && rows,
+           stack ? "too wide for a row: stacked, on screen, apart" : "long labels: on screen, apart", NULL);
+    harness_free(&h);
+  }
+}
+
+static void picker_tests(void) {
+  printf("File picker\n");
+  char out[BUI_PATH_MAX];
+  bui_path_parent("/home/me/licenses", out, sizeof(out));
+  expect(same(out, "/home/me"), "a folder's parent", out);
+  bui_path_parent("/home/me/", out, sizeof(out));
+  expect(same(out, "/home"), "a trailing slash", out);
+  bui_path_parent("/home", out, sizeof(out));
+  expect(same(out, "/"), "up to the root", out);
+  bui_path_parent("/", out, sizeof(out));
+  expect(same(out, "/"), "the root stays", out);
+}
+
 int main(void) {
   menu_tests();
   settings_tests();
@@ -930,6 +981,8 @@ int main(void) {
   modals_tests();
   surface_tests();
   grid_tests();
+  picker_tests();
+  modal_button_tests();
   voice_tests();
   printf(failures ? "%d failed\n" : "all passed\n", failures);
   return failures ? 1 : 0;

@@ -156,6 +156,43 @@ BUI_API int bui_grid_neighbor(const bui_grid_opts* opts, int index, int dx, int 
  * written to `out`: how many there are. */
 BUI_API size_t bui_hex_rects(bui_rect box, bool pointy, bui_color c, bui_draw_cmd* out, size_t cap);
 
+/* ----------------------------------------------------------- file picker */
+
+/* A file picker: a window listing a folder's subfolders and files (those
+ * with one of `extensions`), opened, gone up from, and chosen from by mouse,
+ * keys or controller, every entry read out. The game keeps its state (zero
+ * it, then set `dir` and `extensions`) and shows it each frame till it
+ * returns CHOSEN (the path in `chosen`) or CANCELLED (Back, Escape, B). It
+ * reads the disk itself: the folder again each time it's come to. */
+#define BUI_PATH_MAX 1024
+
+typedef enum bui_pick { BUI_PICK_OPEN, BUI_PICK_CHOSEN, BUI_PICK_CANCELLED } bui_pick;
+
+typedef struct bui_file_entry {
+  char name[256];
+  bool folder;
+} bui_file_entry;
+
+typedef struct bui_file_picker {
+  char dir[BUI_PATH_MAX] BUI_ZERO;        /* the folder shown ("": the home folder) */
+  const char* extensions BUI_ZERO;        /* the files listed: ".hxlicense;.txt" (NULL or "": every file) */
+  bool show_hidden BUI_ZERO;              /* dot files too */
+  char chosen[BUI_PATH_MAX] BUI_ZERO;     /* the file picked (CHOSEN) */
+  /* (Its own: the folder read, its entries.) */
+  char read_dir[BUI_PATH_MAX] BUI_ZERO;
+  bui_file_entry* entries BUI_ZERO;
+  int entry_count BUI_ZERO;
+  bool unreadable BUI_ZERO;
+} bui_file_picker;
+
+/* The picker in a window over `area` (its title at its top). */
+BUI_API bui_pick bui_file_picker_show(bui_context* ui, const char* id, bui_rect area, bui_file_picker* picker,
+                                      const char* title);
+/* Its entries let go of (the picker done with). */
+BUI_API void bui_file_picker_free(bui_file_picker* picker);
+/* A folder's parent ("/a/b" -> "/a"; a root stays), into `out`. */
+BUI_API void bui_path_parent(const char* path, char* out, size_t size);
+
 /* ------------------------------------------------------------ tech tree */
 
 /* A tech tree: boxes of text joined by lines, a button under each, on a

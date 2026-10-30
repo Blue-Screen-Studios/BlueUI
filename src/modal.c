@@ -139,28 +139,42 @@ void bui__modal_frame(bui_context* ui) {
   bui_screen(ui, bui_format(ui, "bui.modal.%s", m->id), bui_format(ui, "%s. %s", bui__s(m->title), bui__s(m->message)), NULL);
   bui_fill(ui, bui_rect_make(0, 0, sw, sh), t->backdrop);
 
-  /* The window: its title, its message, its buttons along the bottom. */
-  const float w = fminf(sw - 16.0f * p, 240.0f * p), text_w = w - 12.0f * p;
+  /* The window: its title, its message, its buttons along the bottom. As
+   * wide as they need (as the screen allows); too many for that, one above
+   * another, each the window's width. */
+  float widths[BUI__MODAL_BUTTONS];
+  float row = 0.0f;
+  for (int k = 0; k < m->count; ++k) {
+    widths[k] = fmaxf(60.0f * p, bui_text_width(m->buttons[k], BUI_NUL, p) + 16.0f * p);
+    row += widths[k] + (k > 0 ? 6.0f * p : 0.0f);
+  }
+  const float w = fminf(sw - 16.0f * p, fmaxf(240.0f * p, row + 12.0f * p)), text_w = w - 12.0f * p;
+  const bool stacked = row > text_w;
   const int lines = wrapped(ui, bui__s(m->message), 0, 0, text_w, p, t->text, false);
-  const float bh = 16.0f * p, h = 14.0f * p + 10.0f * p + (float)lines * BUI_LINE_ADVANCE * p + 10.0f * p + bh + 8.0f * p;
+  const float bh = 16.0f * p, bgap = 4.0f * p;
+  const float buttons_h = stacked ? (float)m->count * bh + (float)(m->count - 1) * bgap : bh;
+  const float h = 14.0f * p + 10.0f * p + (float)lines * BUI_LINE_ADVANCE * p + 10.0f * p + buttons_h + 8.0f * p;
   const float x0 = roundf(0.5f * (sw - w)), y0 = roundf(0.5f * (sh - h));
   const bui_rect win = bui_rect_make(x0, y0, x0 + w, y0 + h);
   bui_window(ui, win, bui__s(m->title), NULL);
   wrapped(ui, bui__s(m->message), x0 + 6.0f * p, y0 + 24.0f * p, text_w, p, t->text, true);
 
-  float bx = win.x1 - 6.0f * p;
-  float widths[BUI__MODAL_BUTTONS];
-  for (int b = m->count - 1; b >= 0; --b) {
-    widths[b] = fmaxf(60.0f * p, bui_text_width(m->buttons[b], BUI_NUL, p) + 16.0f * p);
-    bx -= widths[b] + (b < m->count - 1 ? 6.0f * p : 0.0f);
-  }
+  /* (Side by side: right-aligned. Stacked: the first on top.) */
+  float bx = win.x1 - 6.0f * p - row;
+  const float top = win.y1 - 8.0f * p - buttons_h;
   int chosen = -1;
-  for (int b = 0; b < m->count; ++b) {
-    const bui_rect r = bui_rect_make(bx, win.y1 - 8.0f * p - bh, bx + widths[b], win.y1 - 8.0f * p);
-    bx += widths[b] + 6.0f * p;
+  for (int k = 0; k < m->count; ++k) {
+    bui_rect r;
+    if (stacked) {
+      const float by = top + (float)k * (bh + bgap);
+      r = bui_rect_make(win.x0 + 6.0f * p, by, win.x1 - 6.0f * p, by + bh);
+    } else {
+      r = bui_rect_make(bx, top, bx + widths[k], top + bh);
+      bx += widths[k] + 6.0f * p;
+    }
     bui_button_opts o = {0};
-    o.back = b == m->count - 1;  /* (Back: the last button) */
-    if (bui_button(ui, bui_format(ui, "bui.modal.%d", b), bui_format(ui, "%s", m->buttons[b]), r, &o) && chosen < 0) chosen = b;
+    o.back = k == m->count - 1;  /* (Back: the last button) */
+    if (bui_button(ui, bui_format(ui, "bui.modal.%d", k), bui_format(ui, "%s", m->buttons[k]), r, &o) && chosen < 0) chosen = k;
   }
   if (chosen < 0) return;
 

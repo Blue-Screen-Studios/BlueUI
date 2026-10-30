@@ -243,6 +243,25 @@ The theme colours are `grid_cell`, `grid_ring`, `grid_selected`, `grid_selected_
 
 Spoken as: *"Pickaxe. Item 4 of 40, slot"*.
 
+## File picker
+
+A file picker lists a folder's subfolders, then its files with one of the given extensions. It reads the disk itself, so a game needs no platform dialog. The game keeps its state between frames and shows it every frame until it returns.
+
+```c
+static bui_file_picker picker;                 /* zeroed: the home folder */
+picker.extensions = ".hxlicense;.txt";         /* NULL: every file */
+switch (bui_file_picker_show(ui, "pick", area, &picker, "IMPORT LICENSE")) {
+  case BUI_PICK_CHOSEN: load(picker.chosen); bui_file_picker_free(&picker); break;
+  case BUI_PICK_CANCELLED: bui_file_picker_free(&picker); break;
+  case BUI_PICK_OPEN: break;                   /* still choosing */
+}
+```
+
+- Activating a folder opens it; **UP** goes to its parent and **HOME** to the home folder. Activating a file chooses it.
+- **CANCEL**, Escape and B cancel.
+- Entries are spoken as *"Folder saves"* or *"File key.hxlicense"*. Opening a folder announces where you are.
+- Dot files are hidden unless `show_hidden` is set. A folder that can't be read says so.
+
 ## Custom widgets
 
 Any rectangle becomes an accessible item with `bui_declare`. Use it for screens with their own look: inventory grids, character pickers, shop rows.
