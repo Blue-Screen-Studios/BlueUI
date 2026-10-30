@@ -260,6 +260,163 @@ static void scroll_tests(void) {
   harness_free(&h);
 }
 
+/* ----------------------------------------------------------- tech tree */
+
+/* Its canvas 400 x 366 (the strip under it), centred on (200, 183). */
+static bui_tech_view tree_view;
+static const bui_tech_node tree_nodes[] = {
+    {"Bucket", "UNLOCKED", NULL, 0, 0, BUI_TECH_UNLOCKED, 0, NULL, false},
+    {"Bins", "$100  1H", NULL, -100, 100, BUI_TECH_AVAILABLE, 0, "UNLOCK", false},
+    {"Permits", "NEEDS LAWYER", NULL, 100, 100, BUI_TECH_LOCKED, 0, "LOCKED", true},
+    {"Far", NULL, NULL, 1000, 0, BUI_TECH_LOCKED, 0, NULL, false},
+};
+static const bui_tech_link tree_links[] = {{0, 1}, {0, 2}, {0, 3}};
+
+static void tree_screen(harness* h) {
+  bui_screen(h->ui, "tree", "Tech tree", NULL);
+  const int k = bui_tech_tree(h->ui, "tree", bui_rect_make(0, 0, 400, 400), tree_nodes, 4, tree_links, 3, &tree_view, NULL);
+  if (k >= 0) h->pressed = k;
+}
+
+static void tree_at(float x, float y, float zoom, int selected) {
+  memset(&tree_view, 0, sizeof(tree_view));
+  tree_view.x = x, tree_view.y = y, tree_view.zoom = zoom, tree_view.selected = selected;
+}
+
+static void press(harness* h, bui_vec2 at, bool clicked, bool down) {
+  bui_input in = none();
+  in.mouse = at, in.clicked = clicked, in.click_at = at, in.mouse_down = down;
+  frame_with(h, NULL, 0, in);
+}
+
+static void tree_tests(void) {
+  printf("A tech tree\n");
+  harness h;
+  harness_init(&h, tree_screen);
+  tree_at(0, 50, 1, 0);
+  frame(&h);
+  click(&h, (bui_vec2){100, 265});
+  expect(h.pressed == 1 && tree_view.selected == 1, "its button pressed: the node asked for, picked", NULL);
+  h.pressed = -1;
+  click(&h, (bui_vec2){300, 265});
+  frame(&h);
+  expect(h.pressed == -1, "a disabled button: not asked for", NULL);
+  click(&h, (bui_vec2){300, 233});
+  frame(&h);
+  expect(tree_view.selected == 2, "a node clicked: picked", NULL);
+  click(&h, (bui_vec2){200, 330});
+  frame(&h);
+  expect(tree_view.selected == -1, "nothing clicked: none picked", NULL);
+
+  tree_at(0, 50, 1, 2);
+  press(&h, (bui_vec2){200, 330}, true, true);
+  press(&h, (bui_vec2){230, 330}, false, true);
+  press(&h, (bui_vec2){250, 330}, false, true);
+  press(&h, (bui_vec2){250, 330}, false, false);
+  expect(fabsf(tree_view.x + 50.0f) < 0.01f && tree_view.selected == 2, "dragged: panned, the pick kept", NULL);
+
+  tree_at(0, 50, 1, 0);
+  bui_input wheel = none();
+  wheel.mouse = (bui_vec2){300, 233}, wheel.wheel = 1.0f;
+  frame_with(&h, NULL, 0, wheel);
+  frame(&h);
+  const bui_item_state* f = bui_find(h.ui, "tree.n2");
+  const bui_vec2 m = f ? bui_rect_center(f->rect) : (bui_vec2){0, 0};
+  expect(fabsf(tree_view.zoom - 1.15f) < 0.001f && fabsf(m.x - 300.0f) < 1.0f && fabsf(m.y - 233.0f) < 1.0f,
+         "wheeled: zoomed about the mouse", NULL);
+
+  tree_at(0, 50, 1, 0);
+  frame(&h);
+  f = bui_find(h.ui, "tree.n3");
+  click(&h, (bui_vec2){1200, 183});
+  frame(&h);
+  expect(f && !f->shown && tree_view.selected == 0, "a node out of the canvas: not clicked", NULL);
+
+  tree_at(0, 50, 1, 0);
+  bui_focus(h.ui, "tree.n0");
+  for (int k = 0; k < 6; ++k) key(&h, BUI_KEY_DOWN);
+  frame(&h);
+  expect(same(focused(&h), "tree.n3") && tree_view.x == 1000.0f && tree_view.selected == 3, "the focus come to it: panned to, picked",
+         focused(&h));
+  key(&h, BUI_KEY_DOWN);
+  expect(same(said(&h), "Zoom out. Item 7 of 9, button"), "the zoom buttons after", said(&h));
+  harness_free(&h);
+}
+
+/* A tree across: ten nodes in a row, 200 units apart; fitted to start
+ * with, zoomed by the wheel (about the mouse), dragged any way, panned by
+ * Left and Right, kept from panning off its ends. */
+static bui_tech_node row_nodes[10];
+static bui_tech_view row_view;
+static int row_pressed = -1;
+
+static void row_screen(harness* h) {
+  bui_screen(h->ui, "row", "Tech tree", NULL);
+  for (int k = 0; k < 10; ++k) {
+    const bui_tech_node n = {"Node", NULL, NULL, 200.0f * (float)k, 100.0f * (float)(k % 3), BUI_TECH_AVAILABLE, 0, NULL, k == 1, true};
+    row_nodes[k] = n;  /* (each its own button; the second can't be pressed) */
+  }
+  bui_tech_tree_opts o = {0};
+  o.horizontal = true, o.min_zoom = 0.1f;
+  const int pressed = bui_tech_tree(h->ui, "row", bui_rect_make(0, 0, 400, 400), row_nodes, 10, NULL, 0, &row_view, &o);
+  if (pressed >= 0) row_pressed = pressed;
+}
+
+/* A press on `id`'s middle, then let go `dx`, `dy` from it. */
+static void press_on(harness* h, const char* id, float dx, float dy) {
+  const bui_item_state* f = bui_find(h->ui, id);
+  const bui_vec2 at = f ? bui_rect_center(f->rect) : (bui_vec2){-100, -100};
+  bui_input down = none();
+  down.mouse = down.click_at = at, down.clicked = down.mouse_down = true;
+  frame_with(h, NULL, 0, down);
+  bui_input moved = none();
+  moved.mouse = (bui_vec2){at.x + dx, at.y + dy}, moved.mouse_down = true;
+  frame_with(h, NULL, 0, moved);
+  bui_input up = none();
+  up.mouse = moved.mouse;
+  frame_with(h, NULL, 0, up);
+}
+
+static void tree_row_tests(void) {
+  printf("A tech tree across\n");
+  harness h;
+  harness_init(&h, row_screen);
+  memset(&row_view, 0, sizeof(row_view));
+  frame(&h);
+  const float fitted = row_view.zoom;
+  const bui_item_state *first = bui_find(h.ui, "row.n0"), *last = bui_find(h.ui, "row.n9");
+  expect(fitted > 0.0f && fitted < 1.0f && first && first->shown && last && last->shown, "fitted to start with: the whole row in sight", NULL);
+  bui_input wheel = none();
+  wheel.mouse = (bui_vec2){200, 100}, wheel.wheel = 2.0f;
+  frame_with(&h, NULL, 0, wheel);
+  expect(row_view.zoom > fitted, "the wheel: zoomed in", NULL);
+  const float x = row_view.x, y = row_view.y;
+  bui_input press = none();
+  press.mouse = press.click_at = (bui_vec2){200, 300}, press.clicked = press.mouse_down = true;
+  frame_with(&h, NULL, 0, press);
+  bui_input drag = none();
+  drag.mouse = (bui_vec2){150, 260}, drag.mouse_down = true;
+  frame_with(&h, NULL, 0, drag);
+  frame(&h);
+  expect(row_view.x > x && row_view.y > y, "dragged up and left: panned right and down", NULL);
+  const float dragged = row_view.x;
+  key(&h, BUI_KEY_LEFT);
+  expect(row_view.x < dragged, "Left: panned back", NULL);
+  for (int k = 0; k < 40; ++k) key(&h, BUI_KEY_LEFT);
+  expect(fabsf(row_view.x - row_nodes[0].x + 60.0f) < 0.01f, "kept from panning past its left end", NULL);
+  row_view.zoom = 0.0f;
+  frame(&h);
+  row_pressed = -1;
+  press_on(&h, "row.n0", 30.0f, 0.0f);
+  expect(row_pressed == -1, "a node pressed on and dragged: not pressed", NULL);
+  press_on(&h, "row.n0", 1.0f, 0.0f);
+  expect(row_pressed == 0, "a node clicked (let go on it): pressed", NULL);
+  row_pressed = -1;
+  press_on(&h, "row.n1", 0.0f, 0.0f);
+  expect(row_pressed == -1, "one that can't be: not pressed", NULL);
+  harness_free(&h);
+}
+
 /* --------------------------------------------------------- rebinding */
 
 static void controls_screen(harness* h) {
@@ -579,6 +736,63 @@ static void modals_tests(void) {
   harness_free(&h);
 }
 
+/* ------------------------------------------------------------ surfaces */
+
+static void surface_tests(void) {
+  printf("Surfaces\n");
+  /* A camera at the origin looking down -z (90 degrees, square, near 0.1:
+   * reversed-Z, Vulkan's y down), a 0.4 x 0.25 m canvas 1 m away, turned. */
+  const float f = 1.0f, n = 0.1f;
+  const float vp[16] = {f, 0, 0, 0, 0, -f, 0, 0, 0, 0, 0, -1, 0, 0, n, 0};
+  const float c = cosf(0.5f), s = sinf(0.5f);
+  const float right[3] = {0.4f * c, 0.0f, 0.4f * s}, down[3] = {0.0f, -0.25f, 0.0f};
+  const float origin[3] = {-0.2f * c, 0.125f, -1.0f - 0.2f * s};
+  const bui_vec2 size = {800.0f, 500.0f}, view = {1000.0f, 1000.0f};
+  const bui_surface sf = bui_surface_on_plane(size, origin, right, down, vp, view);
+  float worst = 0.0f;
+  bool all = true;
+  const bui_vec2 pts[5] = {{0.5f, 0.5f}, {799.0f, 0.5f}, {799.0f, 499.0f}, {0.5f, 499.0f}, {400.0f, 250.0f}};
+  for (int k = 0; k < 5; ++k) {
+    bui_vec2 at, back;
+    all = all && bui_surface_project(&sf, pts[k], &at) && bui_surface_unproject(&sf, at, &back);
+    worst = fmaxf(worst, fmaxf(fabsf(back.x - pts[k].x), fabsf(back.y - pts[k].y)));
+  }
+  expect(all && worst < 0.01f, "the canvas's corners and middle to the screen and back", NULL);
+  bui_vec2 mid;
+  bui_surface_project(&sf, pts[4], &mid);
+  expect(fabsf(mid.x - 500.0f) < 1.0f && fabsf(mid.y - 500.0f) < 1.0f, "its middle in the screen's middle", NULL);
+  bui_vec2 off;
+  expect(!bui_surface_unproject(&sf, (bui_vec2){5.0f, 5.0f}, &off), "a pixel off it: nowhere on it", NULL);
+  /* Behind: the same canvas turned round behind the camera. */
+  const float behind[3] = {origin[0], origin[1], 1.0f};
+  const bui_surface bk = bui_surface_on_plane(size, behind, right, down, vp, view);
+  bui_vec2 p;
+  expect(!bui_surface_project(&bk, pts[4], &p) && !bui_surface_unproject(&bk, (bui_vec2){500.0f, 500.0f}, &p),
+         "behind the camera: neither way", NULL);
+  /* Set on a context: the mouse and a click taken onto the canvas. */
+  bui_config cfg;
+  memset(&cfg, 0, sizeof cfg);
+  cfg.skip_narrator_support_modal = true;  /* (no modal holding the input back) */
+  bui_context* ui = bui_create(&cfg);
+  bui_set_surface(ui, &sf);
+  bui_input in;
+  bui_input_clear(&in);
+  bui_vec2 at;
+  bui_surface_project(&sf, (bui_vec2){200.0f, 100.0f}, &at);
+  in.mouse = at, in.clicked = true, in.click_at = at, in.screen_size = view;
+  bui_begin_frame(ui, &in);
+  const bui_input* got = bui_get_input(ui);
+  expect(fabsf(got->mouse.x - 200.0f) < 0.05f && fabsf(got->mouse.y - 100.0f) < 0.05f && got->clicked &&
+             fabsf(got->click_at.x - 200.0f) < 0.05f && got->screen_size.x == 800.0f,
+         "set: the mouse and the click on the canvas, its size the screen's", NULL);
+  bui_end_frame(ui);
+  bui_set_surface(ui, NULL);
+  bui_begin_frame(ui, &in);
+  expect(bui_get_surface(ui) == NULL && bui_get_input(ui)->mouse.x == at.x, "unset: the screen's own again", NULL);
+  bui_end_frame(ui);
+  bui_destroy(ui);
+}
+
 /* -------------------------------------------------------------- voice */
 
 static void voice_tests(void) {
@@ -612,16 +826,110 @@ static void voice_tests(void) {
   bui_destroy(ui);
 }
 
+/* ------------------------------------------------------------- grids */
+
+static bui_grid_opts grid_opts(bui_grid_shape shape) {
+  bui_grid_opts o = {0};
+  o.shape = shape, o.columns = 4, o.rows = 3, o.count = 10, o.cell = 20.0f, o.selected = -1;
+  return o;
+}
+
+static int grid_shape_now = BUI_GRID_HEX_POINTY;
+
+static void grid_screen(harness* h) {
+  bui_screen(h->ui, "grid", "Grid", NULL);
+  if (bui_button(h->ui, "ABOVE", "ABOVE", bui_rect_make(10, 0, 100, 16), NULL)) h->pressed = 100;
+  const bui_grid_opts o = grid_opts((bui_grid_shape)grid_shape_now);
+  const bui_grid_result r = bui_grid(h->ui, "inv", bui_rect_make(10, 20, 400, 400), &o);
+  if (r.activated >= 0) h->pressed = r.activated;
+  if (r.alt_activated >= 0) h->hit = r.alt_activated;
+  if (bui_button(h->ui, "BELOW", "BELOW", bui_rect_make(10, 200, 100, 216), NULL)) h->pressed = 101;
+}
+
+static void grid_tests(void) {
+  printf("Grids\n");
+  {
+    const bui_grid_opts o = grid_opts(BUI_GRID_SQUARE);
+    const bui_rect a = bui_rect_make(0, 0, 100, 100);
+    expect(bui_grid_hit(&o, a, (bui_vec2){25, 5}) == 1 && bui_grid_hit(&o, a, (bui_vec2){85, 5}) == -1,
+           "square: the cell under a point (none past its columns)", NULL);
+    expect(bui_grid_hit(&o, a, (bui_vec2){45, 45}) == -1, "square: the last row short of it: nothing there", NULL);
+    expect(bui_grid_neighbor(&o, 5, 1, 0) == 6 && bui_grid_neighbor(&o, 3, 1, 0) == -1 && bui_grid_neighbor(&o, 6, 0, 1) == 9 &&
+               bui_grid_neighbor(&o, 1, 0, -1) == -1,
+           "square: neighbours, none off its edges, down to the short row's last", NULL);
+    const bui_vec2 sz = bui_grid_size(&o);
+    expect(sz.x == 80.0f && sz.y == 60.0f, "square: its size", NULL);
+  }
+  {
+    const bui_grid_opts o = grid_opts(BUI_GRID_HEX_POINTY);
+    const bui_rect a = bui_rect_make(0, 0, 200, 200);
+    const bui_rect c0 = bui_grid_cell_rect(&o, a, 0), c4 = bui_grid_cell_rect(&o, a, 4);
+    expect(c4.x0 == c0.x0 + 10.0f && c4.y0 > c0.y0 && c4.y0 < c0.y1, "pointy: the second row shifted half a cell, overlapping", NULL);
+    /* (The box's top corners: outside the hexagon, so the cell over it.) */
+    expect(bui_grid_hit(&o, a, bui_rect_center(c0)) == 0 && bui_grid_hit(&o, a, (bui_vec2){c0.x0 + 1, c0.y0 + 1}) == -1,
+           "pointy: hit by its shape, not its box", NULL);
+    const bui_vec2 corner = {c4.x0 + 1.0f, c4.y0 + 1.5f};
+    expect(bui_grid_hit(&o, a, corner) == 0, "pointy: the next row's box corner: the cell above's", NULL);
+    size_t n = bui_hex_rects(c0, true, bui_rgb(1, 1, 1), NULL, 0);
+    expect(n >= 7, "a hexagon from rectangles", NULL);
+  }
+  {
+    const bui_grid_opts o = grid_opts(BUI_GRID_HEX_FLAT);
+    const bui_rect a = bui_rect_make(0, 0, 200, 200);
+    const bui_rect c0 = bui_grid_cell_rect(&o, a, 0), c1 = bui_grid_cell_rect(&o, a, 1);
+    expect(c1.y0 == c0.y0 + 10.0f && c1.x0 < c0.x1, "flat: the second column shifted down half a cell", NULL);
+    expect(bui_grid_hit(&o, a, bui_rect_center(c1)) == 1, "flat: hit", NULL);
+  }
+  /* Driven: the arrow keys across and down it, out of it; a click on a cell. */
+  harness h;
+  harness_init(&h, grid_screen);
+  frame(&h);
+  key(&h, BUI_KEY_DOWN);
+  expect(same(focused(&h), "ABOVE"), "first key: the first item", NULL);
+  key(&h, BUI_KEY_DOWN);
+  expect(same(focused(&h), "inv#0") && starts(said(&h), "Slot 1"), "down: into the grid, its first cell", said(&h));
+  key(&h, BUI_KEY_RIGHT), key(&h, BUI_KEY_RIGHT);
+  expect(same(focused(&h), "inv#2"), "right: across", NULL);
+  key(&h, BUI_KEY_DOWN);
+  expect(same(focused(&h), "inv#6"), "down: the next row", NULL);
+  key(&h, BUI_KEY_DOWN);
+  expect(same(focused(&h), "inv#9"), "down into the short row: its last", NULL);
+  key(&h, BUI_KEY_DOWN);
+  expect(same(focused(&h), "BELOW"), "down off its bottom: the item after it", NULL);
+  key(&h, BUI_KEY_UP);
+  expect(same(focused(&h), "inv#9"), "up: back into it", NULL);
+  key(&h, BUI_KEY_ACTIVATE);
+  expect(h.pressed == 9, "Enter: the cell activated", NULL);
+  key(&h, BUI_KEY_UP), key(&h, BUI_KEY_UP), key(&h, BUI_KEY_UP);
+  expect(same(focused(&h), "ABOVE"), "up off its top: the item before it", NULL);
+  {
+    const bui_grid_opts o = grid_opts(BUI_GRID_HEX_POINTY);
+    const bui_vec2 at = bui_rect_center(bui_grid_cell_rect(&o, bui_rect_make(10, 20, 400, 400), 5));
+    h.pressed = -1;
+    click(&h, at);
+    expect(h.pressed == 5 && same(focused(&h), "inv#5"), "a click: that cell", NULL);
+    bui_input in = none();
+    in.mouse = at, in.alt_clicked = true, in.alt_click_at = at;
+    frame_with(&h, NULL, 0, in);
+    expect(h.hit == 5, "a right-click: alt-activated", NULL);
+  }
+  harness_free(&h);
+}
+
 int main(void) {
   menu_tests();
   settings_tests();
   scroll_tests();
+  tree_tests();
+  tree_row_tests();
   capture_tests();
   speech_tests();
   theme_tests();
   sound_tests();
   rumble_tests();
   modals_tests();
+  surface_tests();
+  grid_tests();
   voice_tests();
   printf(failures ? "%d failed\n" : "all passed\n", failures);
   return failures ? 1 : 0;

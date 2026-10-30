@@ -136,6 +136,7 @@ typedef struct bui_strings {
 | `control_width`, `arrow_width`, `blurb_at` | Form row layout. |
 | `focus`, `focus_width`, `focus_gap` | The focus outline: colour, thickness, distance from the item. |
 | `backdrop` | Drawn over the whole screen behind a modal. |
+| `tech_canvas`, `tech_node`, `tech_locked`, `tech_available`, `tech_researching`, `tech_unlocked`, `tech_selected`, `tech_link`, `tech_link_lit` | Tech trees: the canvas, a node's face, its edge by state (and when selected), and the lines between nodes (lit when the node they lead to is unlocked). |
 | `sound_pack`, `sound_volume` | The built-in GUI sound pack (`BUI_SOUNDS_NONE` by default, `BUI_SOUNDS_SOFT` or `BUI_SOUNDS_CRISP`) and its volume, 0 to 1. |
 | `rumble_pack`, `rumble_strength` | The built-in rumble pack (`BUI_RUMBLE_NONE` by default, `BUI_RUMBLE_SOFT` or `BUI_RUMBLE_CRISP`) and its strength, 0 to 1. |
 
@@ -151,6 +152,7 @@ typedef struct bui_strings {
 | `mouse_down` | `bool` | Left button held. |
 | `clicked` | `bool` | Left button pressed this frame. |
 | `click_at` | `bui_vec2` | Where it was pressed. |
+| `alt_clicked`, `alt_click_at` | `bool`, `bui_vec2` | The right button pressed this frame, and where. Grids report it as `alt_activated`. |
 | `wheel` | `float` | Wheel movement this frame; positive is up. |
 | `keys`, `key_count` | `bui_key[BUI_MAX_KEYS]`, `int` | Navigation keys pressed this frame, in order. |
 | `tab_hotkey` | `int` | A tab chosen by number: 1 is the first, 0 is none. |
@@ -196,6 +198,28 @@ typedef struct bui_hints {
   const char* gamepad;    /* spoken on the first visit with a controller; NULL uses keyboard */
 } bui_hints;
 ```
+
+### Surfaces
+
+A surface lays the UI out on a canvas of its own size that appears somewhere other than flat on the screen, such as a laptop screen inside a 3D world. BlueUI stays 2D: the geometry is still emitted in canvas pixels, and the game draws it through `to_clip`. BlueUI maps the mouse back onto the canvas.
+
+```c
+typedef struct bui_surface {
+  bui_vec2 size;      /* the canvas, in pixels */
+  float to_clip[16];  /* canvas (x, y, 0, 1) to clip space, column-major; NDC x right, y down */
+  bui_vec2 viewport;  /* the screen's pixels (the mouse's space) */
+} bui_surface;
+```
+
+| Function | Description |
+|---|---|
+| `bui_surface bui_surface_on_plane(bui_vec2 size, const float origin[3], const float right[3], const float down[3], const float view_proj[16], bui_vec2 viewport)` | A canvas on a world plane: its top-left corner at `origin`, its full width along `right` and its full height along `down`, seen through `view_proj`. |
+| `bool bui_surface_unproject(const bui_surface* s, bui_vec2 screen, bui_vec2* canvas)` | A screen pixel to canvas pixels. Returns `false` if the pixel is off the canvas or the canvas is behind the camera. |
+| `bool bui_surface_project(const bui_surface* s, bui_vec2 canvas, bui_vec2* screen)` | A canvas point to screen pixels. Returns `false` if the point is behind the camera. |
+| `void bui_set_surface(bui_context* ui, const bui_surface* s)` | Lays out the frames from the next `bui_begin_frame` on `s` (copied; `NULL` returns to the screen). The input's mouse and click are unprojected onto the canvas (off it, they're nowhere), and `screen_size` becomes the canvas size. |
+| `const bui_surface* bui_get_surface(const bui_context* ui)` | The current surface, or `NULL`. |
+
+To draw the geometry, apply `to_clip` to each rectangle's corners in the vertex shader (`gl_Position = to_clip * vec4(x, y, 0, 1)`). The clip-space `w` keeps text and icons perspective-correct.
 
 ---
 
@@ -419,6 +443,11 @@ See [Modals](modals.md).
 | `const unsigned char* bui_glyph_rows(char c)` | The glyph's 7 rows of 5 bits, top first, leftmost pixel in the highest bit. |
 | `const char* bui_format(bui_context* ui, const char* fmt, ...)` | A `printf`-formatted string that stays valid until the frame after next begins. |
 
+| `void bui_set_font(const bui_font* font)` | Replaces the built-in font, for every context (`NULL` restores it). The struct is kept, not copied. |
+| `const bui_font* bui_get_font(void)` | The font set, or `NULL`. |
+
+`bui_font` holds `user`, `width(user, text, len, pixel)` and `rects(user, text, len, x, y, pixel, color, shadow, out, cap)`. They take the place of `bui_text_width` and `bui_text_rects`, and keep the built-in font's measures so layouts don't change: the text's top at `y`, capitals `BUI_GLYPH_H * pixel` tall, lines `BUI_LINE_ADVANCE * pixel` apart. A game's TTF font returns rectangles textured from its UI texture.
+
 Font constants: `BUI_GLYPH_W` (5), `BUI_GLYPH_H` (7), `BUI_GLYPH_ADVANCE` (6), `BUI_LINE_ADVANCE` (9), all in font pixels. Lower-case letters are drawn as upper case.
 
 ---
@@ -437,6 +466,14 @@ Declared in `<blueui/widgets.h>`. See [Widgets](widgets.md) for behaviour and ex
 | `bui_row_parts` | `row`, `control`, `prev`, `next`. |
 | `bui_captured` | `started`, `cancelled`, `has_code`, `code`, `waiting`. |
 | `bui_format_fn` | `void (*)(float value, char* out, size_t size, void* user)`. |
+| `bui_tech_node` | `title`, `detail`, `spoken`, `x`, `y`, `state`, `progress`, `button`, `button_disabled`. |
+| `bui_tech_state` | `BUI_TECH_LOCKED`, `BUI_TECH_AVAILABLE`, `BUI_TECH_RESEARCHING`, `BUI_TECH_UNLOCKED`. |
+| `bui_tech_link` | `from`, `to` (node indices). |
+| `bui_tech_view` | `x`, `y`, `zoom`, `selected` (plus internal drag state). Zero it to start fitted. |
+| `bui_tech_tree_opts` | `node_w`, `node_h`, `min_zoom`, `max_zoom` (0: 120, 40, 0.35, 2.5). |
+| `bui_grid_shape` | `BUI_GRID_SQUARE`, `BUI_GRID_HEX_POINTY`, `BUI_GRID_HEX_FLAT`. |
+| `bui_grid_opts` | `shape`, `columns`, `rows`, `count`, `cell`, `gap`, `stagger_first`, `selected`, `inert`, `no_faces`, `role`, `spoken`, `draw_cell`, `user`, `hex_uv`, `ring_uv`, `ring`. |
+| `bui_grid_result` | `hovered`, `focused`, `activated`, `alt_activated` (cell indices, -1 for none). `draw_cell` state bits: `BUI_CELL_HOVERED`, `BUI_CELL_FOCUSED`, `BUI_CELL_SELECTED`. |
 
 ### Functions
 
@@ -456,3 +493,11 @@ Declared in `<blueui/widgets.h>`. See [Widgets](widgets.md) for behaviour and ex
 | `bool bui_button_row(ui, id, row, field, text)` | Pressed. |
 | `bool bui_foldout_row(ui, id, row, field, open)` | Opened or closed. |
 | `bui_captured bui_capture(ui, id, item, prompt, seconds)` | — |
+| `int bui_tech_tree(ui, id, area, nodes, count, links, link_count, view, opts)` | Returns the node whose button was pressed (an unlock request), else -1. |
+| `void bui_tech_fit(ui, view, area, nodes, count, opts)` | — |
+| `bui_grid_result bui_grid(ui, id, area, opts)` | Returns the cells hovered, focused, activated and right-clicked this frame. |
+| `bui_vec2 bui_grid_size(opts)` | The grid's whole size. |
+| `bui_rect bui_grid_cell_rect(opts, area, index)` | A cell's bounding box. |
+| `int bui_grid_hit(opts, area, point)` | The cell under a point by its exact shape, else -1. |
+| `int bui_grid_neighbor(opts, index, dx, dy)` | The cell the arrow keys move to, else -1. |
+| `size_t bui_hex_rects(box, pointy, color, out, cap)` | A hexagon filling `box` as rectangles. |

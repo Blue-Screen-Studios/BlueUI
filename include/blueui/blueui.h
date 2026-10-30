@@ -141,6 +141,8 @@ typedef struct bui_input {
   bool mouse_down;       /* the left button held */
   bool clicked;          /* pressed this frame, at click_at */
   bui_vec2 click_at;
+  bool alt_clicked;      /* the right button pressed this frame, at alt_click_at (a grid's cell: alt_activated) */
+  bui_vec2 alt_click_at;
   float wheel;           /* up positive */
   bui_key keys[BUI_MAX_KEYS];
   int key_count;
@@ -402,6 +404,13 @@ typedef struct bui_theme {
   float focus_width, focus_gap;
   /* Behind a modal: drawn over the whole screen. */
   bui_color backdrop;
+  /* Tech trees: the canvas, a node's face, its edge by its state (and
+   * picked), the lines between them (to one unlocked: lit). */
+  bui_color tech_canvas, tech_node, tech_locked, tech_available, tech_researching, tech_unlocked, tech_selected;
+  bui_color tech_link, tech_link_lit;
+  /* Grids (bui_grid): a cell's face, its ring, the selected cell's ring and
+   * face, the hovered (or focused) cell's face. */
+  bui_color grid_cell, grid_ring, grid_selected, grid_selected_face, grid_hover;
   /* The GUI sounds: which built-in pack plays, and how loud (0..1). */
   bui_sound_pack sound_pack;
   float sound_volume;
@@ -441,6 +450,33 @@ BUI_API bool bui_has_voice(const bui_context* ui);
 /* The frame: its input in, then the screen and its items declared, then
  * its end (navigation, the focus's outline, the line said). */
 BUI_API void bui_begin_frame(bui_context* ui, const bui_input* in);
+
+/* ------------------------------------------------------------- surfaces */
+
+/* A surface: the UI laid out on a canvas of its own (`size` pixels) that
+ * lands somewhere other than flat on the screen (a laptop's screen in the
+ * game's world, seen in perspective). The game draws the geometry (still in
+ * canvas pixels) through `to_clip`; BlueUI takes the mouse back through it.
+ * Clip space as the screen's pixels: NDC x right, y down (Vulkan's). */
+typedef struct bui_surface {
+  bui_vec2 size;      /* the canvas */
+  float to_clip[16];  /* canvas (x, y, 0, 1) to clip space, column-major */
+  bui_vec2 viewport;  /* the screen's pixels (the mouse's) */
+} bui_surface;
+/* A canvas on a plane in the world: its top left at `origin`, its whole
+ * width along `right`, its height along `down` (world), seen through the
+ * camera's `view_proj` (column-major) on a `viewport` of pixels. */
+BUI_API bui_surface bui_surface_on_plane(bui_vec2 size, const float origin[3], const float right[3], const float down[3],
+                                         const float view_proj[16], bui_vec2 viewport);
+/* A screen pixel to the canvas (false: off it, or behind the camera). */
+BUI_API bool bui_surface_unproject(const bui_surface* s, bui_vec2 screen, bui_vec2* canvas);
+/* A canvas point to the screen (false: behind the camera). */
+BUI_API bool bui_surface_project(const bui_surface* s, bui_vec2 canvas, bui_vec2* screen);
+/* The frames from the next bui_begin_frame on laid out on `s` (copied;
+ * NULL: the screen itself): the input's mouse and click unprojected onto
+ * it (off it: nowhere), its screen size the canvas's. */
+BUI_API void bui_set_surface(bui_context* ui, const bui_surface* s);
+BUI_API const bui_surface* bui_get_surface(const bui_context* ui); /* (NULL: none) */
 BUI_API void bui_end_frame(bui_context* ui);
 BUI_API const bui_input* bui_get_input(const bui_context* ui);
 
@@ -571,6 +607,21 @@ BUI_API void bui_trigger(bui_context* ui, bui_event event);
 #define BUI_GLYPH_ADVANCE 6
 #define BUI_LINE_ADVANCE 9
 #define BUI_NUL ((size_t)-1) /* (a length: up to its NUL) */
+
+/* A font of the game's own, in place of the built-in one, for every
+ * context (NULL: the built-in again). It keeps the built-in's measures, so
+ * layouts stay as they are: text's top at y, its capitals BUI_GLYPH_H *
+ * pixel tall, lines BUI_LINE_ADVANCE * pixel apart. `rects` works as
+ * bui_text_rects does (its rectangles textured from the game's UI texture,
+ * say); `width` as bui_text_width. The struct is kept, not copied. */
+typedef struct bui_font {
+  void* user;
+  float (*width)(void* user, const char* text, size_t len, float pixel);
+  size_t (*rects)(void* user, const char* text, size_t len, float x, float y, float pixel, bui_color color, float shadow,
+                  bui_draw_cmd* out, size_t cap);
+} bui_font;
+BUI_API void bui_set_font(const bui_font* font);
+BUI_API const bui_font* bui_get_font(void);
 
 /* Text at (x, y) (its top left) as rectangles, with a one-font-pixel drop
  * shadow when `shadow` > 0 (its darkness): how many there are, the first

@@ -78,6 +78,9 @@ void bui__emit_event(bui_context* ui);
 
 /* -------------------------------------------------------------- context */
 
+/* The frame's input onto the surface, if there's one (surface.c). */
+void bui__surface_input(bui_context* ui, bui_input* in);
+
 typedef struct bui__entry {
   const char* id;
   bui_item item; /* (its strings in the frame's arena) */
@@ -104,6 +107,8 @@ typedef struct bui__scroll {
 
 struct bui_context {
   bui__voice* voice;
+  bui_surface surface; /* (bui_set_surface's) */
+  bool has_surface;
   bui_strings strings;
   bui_theme theme;
   bool speech_on, speech_toggled;
@@ -132,6 +137,7 @@ struct bui_context {
   /* This frame's keys, for the items to take. */
   bool pending_activate, pending_back;
   int pending_step, pending_move, tab_step, tab_jump;
+  int pending_vmove; /* (the part of pending_move Up and Down made: a grid's, to take) */
   bool had_tabs, has_tabs;
   /* Scrolling. */
   bui__scroll* scrolls;

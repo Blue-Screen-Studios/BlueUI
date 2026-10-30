@@ -290,6 +290,7 @@ void bui_begin_frame(bui_context* ui, const bui_input* input) {
   if (input) ui->in = *input;
   else bui_input_clear(&ui->in);
   bui_input* in = &ui->in;
+  bui__surface_input(ui, in);
   ui->frame ^= 1;
   bui__arena_reset(bui__frame_arena(ui));
   ui->draw_count = ui->entry_count = 0;
@@ -298,7 +299,7 @@ void bui_begin_frame(bui_context* ui, const bui_input* input) {
   ui->has_tabs = false;
   ui->hovered_id[0] = 0;
   ui->pending_activate = ui->pending_back = false;
-  ui->pending_step = ui->pending_move = ui->tab_step = 0;
+  ui->pending_step = ui->pending_move = ui->pending_vmove = ui->tab_step = 0;
   ui->tab_jump = -1;
   ui->screen_id[0] = 0;
   bui__str_set(&ui->screen_name, ""), bui__str_set(&ui->page_name, "");
@@ -370,7 +371,7 @@ void bui__take_input(bui_context* ui) {
     switch (key) {
       case BUI_KEY_UP:
       case BUI_KEY_DOWN:
-        if (go) ui->pending_move += key == BUI_KEY_DOWN ? 1 : -1;
+        if (go) ui->pending_move += key == BUI_KEY_DOWN ? 1 : -1, ui->pending_vmove += key == BUI_KEY_DOWN ? 1 : -1;
         break;
       case BUI_KEY_NEXT:
       case BUI_KEY_PREV:
@@ -670,7 +671,7 @@ void bui_end_frame(bui_context* ui) {
     ui->in = ui->modal_in;
     ui->entry_count = 0, ui->rows = 0, ui->has_tabs = false, ui->scroll_at = -1, ui->hovered_id[0] = 0;
     ui->pending_activate = ui->pending_back = false;
-    ui->pending_step = ui->pending_move = ui->tab_step = 0;
+    ui->pending_step = ui->pending_move = ui->pending_vmove = ui->tab_step = 0;
     ui->tab_jump = -1;
     bui__str_set(&ui->page_name, "");
     bui__take_input(ui);

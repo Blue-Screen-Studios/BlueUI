@@ -28,6 +28,13 @@ bui_theme bui_default_theme(void) {
   t.control_width = 120.0f, t.arrow_width = 11.0f, t.blurb_at = 130.0f;
   t.focus = bui_rgb(1.0f, 0.86f, 0.2f), t.focus_width = 1.0f, t.focus_gap = 1.0f;
   t.backdrop = bui_rgba(0.0f, 0.0f, 0.0f, 0.6f);
+  t.tech_canvas = bui_rgba(0.01f, 0.02f, 0.05f, 0.9f), t.tech_node = bui_rgba(0.04f, 0.07f, 0.15f, 0.97f);
+  t.tech_locked = bui_rgb(0.25f, 0.28f, 0.34f), t.tech_available = bui_rgb(0.35f, 0.60f, 1.00f);
+  t.tech_researching = bui_rgb(1.0f, 0.70f, 0.25f), t.tech_unlocked = bui_rgb(0.35f, 0.85f, 0.45f);
+  t.tech_selected = bui_rgb(1.0f, 1.0f, 1.0f), t.tech_link = bui_rgb(0.18f, 0.22f, 0.30f), t.tech_link_lit = bui_rgb(0.35f, 0.85f, 0.45f);
+  t.grid_cell = bui_rgba(0.03f, 0.07f, 0.16f, 0.85f), t.grid_ring = bui_rgb(0.25f, 0.45f, 0.80f);
+  t.grid_selected = bui_rgb(1.0f, 1.0f, 1.0f), t.grid_selected_face = bui_rgba(0.10f, 0.25f, 0.55f, 0.90f);
+  t.grid_hover = bui_rgba(0.12f, 0.24f, 0.48f, 0.90f);
   t.sound_pack = BUI_SOUNDS_NONE, t.sound_volume = 0.8f;
   t.rumble_pack = BUI_RUMBLE_NONE, t.rumble_strength = 1.0f;
   return t;

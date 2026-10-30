@@ -222,10 +222,13 @@ enum {
   PAGE_RUMBLE,
   PAGE_MODALS,
   PAGE_THEMES,
+  PAGE_TECH_TREE,
+  PAGE_GRIDS,
   PAGE_COUNT
 };
 static const char* const kPages[PAGE_COUNT] = {"Buttons", "Toggles", "Choices", "Sliders", "Tabs", "Foldouts",
-                                               "Scrolling", "Custom items", "Rebinding", "Speech", "Sounds", "Rumble", "Modals", "Themes"};
+                                               "Scrolling", "Custom items", "Rebinding", "Speech", "Sounds", "Rumble", "Modals", "Themes",
+                                               "Tech tree", "Grids"};
 
 typedef struct demo {
   bool running;
@@ -245,6 +248,10 @@ typedef struct demo {
   int answer;  /* the example modal's last answer (-1: none yet) */
   int controller_modals;
   float rumble_strength;
+  bui_tech_view tree;
+  bool unlocked[5];
+  int cells[3][12];  /* the grids' cells: 0 empty, else a colour + 1 */
+  int grid_pick;     /* the colour a click puts down */
 } demo;
 
 /* Rows down a page, from (x0, y) to x1, in font pixels times `p`. */
@@ -452,6 +459,28 @@ static void page_scrolling(bui_context* ui, layout* l, float bottom) {
   bui_fill(ui, bui_rect_make(view.x1 - 3 * p, view.y0 + at * h, view.x1 - p, view.y0 + (at + h / content) * h), t->fill);
 }
 
+static void page_tech_tree(bui_context* ui, demo* d, layout* l, float bottom) {
+  explain(ui, l, "about",
+          "A tech tree: boxes joined by lines, a button under each. Drag to pan, wheel to zoom, or use the buttons under it. "
+          "The tree only asks: its button pressed, the game decides (here, a node unlocks once the one before it has).");
+  static const char* const titles[5] = {"Bucket", "Bins", "Shop Vac", "Permits", "Water Tanker"};
+  static const float at[5][2] = {{0, 0}, {-90, 90}, {-90, 180}, {90, 90}, {0, 270}};
+  static const bui_tech_link links[5] = {{0, 1}, {1, 2}, {0, 3}, {2, 4}, {3, 4}};
+  d->unlocked[0] = true;
+  bui_tech_node nodes[5];
+  for (int k = 0; k < 5; ++k) {
+    bool ready = true;
+    for (int j = 0; j < 5; ++j)
+      if (links[j].to == k && !d->unlocked[links[j].from]) ready = false;
+    const bui_tech_node n = {titles[k], d->unlocked[k] ? "UNLOCKED" : ready ? "FREE" : "LOCKED", NULL, at[k][0], at[k][1],
+                             d->unlocked[k] ? BUI_TECH_UNLOCKED : ready ? BUI_TECH_AVAILABLE : BUI_TECH_LOCKED, 0.0f,
+                             d->unlocked[k] ? NULL : "UNLOCK", !ready};
+    nodes[k] = n;
+  }
+  const int k = bui_tech_tree(ui, "tree", bui_rect_make(l->x0, l->y, l->x1, bottom), nodes, 5, links, 5, &d->tree, NULL);
+  if (k >= 0) d->unlocked[k] = true, bui_announce(ui, bui_format(ui, "%s unlocked", titles[k]), BUI_SAY_NORMAL);
+}
+
 static void page_custom(bui_context* ui, demo* d, layout* l) {
   explain(ui, l, "about",
           "Any rectangle can become an item with bui_declare. The game draws it however it likes, and BlueUI handles focus, "
@@ -497,6 +526,53 @@ static void page_custom(bui_context* ui, demo* d, layout* l) {
   bui_centered(ui, prev, "-", t->choice_text, 0.0f);
   bui_centered(ui, next, "+", t->choice_text, 0.0f);
   bui_centered(ui, bui_rect_make(prev.x1, r.y0, next.x0, r.y1), bui_format(ui, "%d", d->stepper), t->choice_text, 0.0f);
+}
+
+static const float kCellColors[4][3] = {{0.8f, 0.2f, 0.2f}, {0.95f, 0.8f, 0.15f}, {0.2f, 0.7f, 0.3f}, {0.25f, 0.45f, 0.95f}};
+static const char* const kCellNames[4] = {"Red", "Yellow", "Green", "Blue"};
+
+typedef struct grid_ctx {
+  bui_context* ui;
+  const int* cells;
+} grid_ctx;
+
+static const char* cell_spoken(void* user, int i) {
+  const grid_ctx* g = user;
+  return g->cells[i] ? bui_format(g->ui, "Cell %d, %s", i + 1, kCellNames[g->cells[i] - 1]) : bui_format(g->ui, "Cell %d, empty", i + 1);
+}
+
+static void cell_draw(void* user, int i, bui_rect inner, unsigned state) {
+  const grid_ctx* g = user;
+  (void)state;
+  if (!g->cells[i]) return;
+  const float* c = kCellColors[g->cells[i] - 1];
+  bui_fill(g->ui, bui_rect_grow(inner, -0.15f * bui_rect_w(inner)), bui_rgb(c[0], c[1], c[2]));
+}
+
+static void page_grids(bui_context* ui, demo* d, layout* l) {
+  explain(ui, l, "about",
+          "Grids of cells: square, or hexagons pointy-top or flat-top. Each cell is an item: the arrow keys move across and down "
+          "it, and off its edge to the items around it. Click or Enter puts the colour down, right-click clears it.");
+  const float p = l->p;
+  const bui_grid_shape shapes[3] = {BUI_GRID_SQUARE, BUI_GRID_HEX_POINTY, BUI_GRID_HEX_FLAT};
+  const char* const names[3] = {"SQUARE", "HEXAGONS, POINTY-TOP", "HEXAGONS, FLAT-TOP"};
+  const char* const ids[3] = {"square", "pointy", "flat"};
+  static const bui_option colours[4] = {{"RED", NULL, NULL}, {"YELLOW", NULL, NULL}, {"GREEN", NULL, NULL}, {"BLUE", NULL, NULL}};
+  const bui_field f = {"Colour", "What a click puts down", NULL, false};
+  bui_choice_row(ui, "colour", row(l, 18.0f), &f, &d->grid_pick, colours, 4);
+  float x = l->x0;
+  const float top = l->y + 12.0f * p;
+  for (int k = 0; k < 3; ++k) {
+    grid_ctx g = {ui, d->cells[k]};
+    bui_grid_opts o = {0};
+    o.shape = shapes[k], o.columns = 4, o.rows = 3, o.cell = 20.0f * p, o.gap = 2.0f * p, o.selected = -1;
+    o.spoken = cell_spoken, o.draw_cell = cell_draw, o.user = &g, o.role = "cell";
+    bui_label(ui, names[k], x, l->y, bui_get_theme(ui)->dim, 0.0f, 0.0f);
+    const bui_grid_result r = bui_grid(ui, ids[k], bui_rect_make(x, top, x + 200 * p, top + 200 * p), &o);
+    if (r.activated >= 0) d->cells[k][r.activated] = d->grid_pick + 1;
+    if (r.alt_activated >= 0) d->cells[k][r.alt_activated] = 0;
+    x += bui_grid_size(&o).x + 16.0f * p;
+  }
 }
 
 static void page_rebinding(bui_context* ui, demo* d, layout* l) {
@@ -673,6 +749,8 @@ static void declare(bui_context* ui, demo* d, int w, int h) {
     case PAGE_RUMBLE: page_rumble(ui, d, &l); break;
     case PAGE_MODALS: page_modals(ui, d, &l); break;
     case PAGE_THEMES: page_themes(ui, d, &l); break;
+    case PAGE_TECH_TREE: page_tech_tree(ui, d, &l, content.y1 - 4 * p); break;
+    case PAGE_GRIDS: page_grids(ui, d, &l); break;
   }
   bui_page(ui, kPages[d->page]);  /* (after the page: the Tabs page's example tab bar names a page too) */
 
@@ -763,6 +841,7 @@ int main(void) {
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
           input.device = BUI_DEVICE_KEYBOARD;
           if (e.button.button == SDL_BUTTON_LEFT) click = true, input.click_at.x = e.button.x, input.click_at.y = e.button.y;
+          if (e.button.button == SDL_BUTTON_RIGHT) input.alt_clicked = true, input.alt_click_at.x = e.button.x, input.alt_click_at.y = e.button.y;
           bui_input_pressed(&input, MOUSE_CODE + e.button.button);
           break;
         case SDL_EVENT_MOUSE_WHEEL: input.wheel += e.wheel.y; break;

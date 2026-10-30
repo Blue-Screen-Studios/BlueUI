@@ -152,10 +152,16 @@ static size_t pass(const char* text, size_t len, float x, float y, float pixel, 
   return at;
 }
 
+static const bui_font* g_font = NULL;
+
+void bui_set_font(const bui_font* font) { g_font = font; }
+const bui_font* bui_get_font(void) { return g_font; }
+
 size_t bui_text_rects(const char* text, size_t len, float x, float y, float pixel, bui_color color, float shadow, bui_draw_cmd* out,
                       size_t cap) {
   text = bui__s(text);
   if (len == BUI_NUL) len = strlen(text);
+  if (g_font && g_font->rects) return g_font->rects(g_font->user, text, len, x, y, pixel, color, shadow, out, cap);
   size_t n = 0;
   if (shadow > 0.0f) n = pass(text, len, x, y, pixel, pixel, pixel, bui_rgba(0.0f, 0.0f, 0.0f, color.a * shadow), out, n, cap);
   return pass(text, len, x, y, pixel, 0.0f, 0.0f, color, out, n, cap);
@@ -178,6 +184,7 @@ void bui_text(bui_context* ui, const char* text, float x, float y, float pixel, 
 float bui_text_width(const char* text, size_t len, float pixel) {
   text = bui__s(text);
   if (len == BUI_NUL) len = strlen(text);
+  if (g_font && g_font->width) return g_font->width(g_font->user, text, len, pixel);
   size_t longest = 0, line = 0;
   for (size_t i = 0; i < len; ++i) {
     line = text[i] == '\n' ? 0 : line + 1;

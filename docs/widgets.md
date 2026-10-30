@@ -187,6 +187,62 @@ draw_slot(rect, c.waiting ? "PRESS A KEY" : "SPACE");
 
 The wait ends with the first pressed code, with `BUI_KEY_CANCEL_CAPTURE`, or after `seconds` (8 when 0). A cancel or timeout sets `cancelled` and speaks "Cancelled". The lower-level calls `bui_start_capture`, `bui_capturing` and `bui_take_captured` are available for custom flows.
 
+## Tech trees
+
+A tech tree draws text boxes joined by lines, with a button under each box. The canvas pans when dragged and zooms with the wheel about the cursor. A strip under it holds **-**, **+** and **FIT** buttons for keyboard and controller players. The widget decides nothing: when a node's button is pressed it returns that node's index, and the game checks costs and prerequisites and updates the node's state for the next frame.
+
+```c
+static bui_tech_view view;                   /* zeroed: fitted on the first frame */
+bui_tech_node nodes[] = {
+  {"Bucket", "UNLOCKED", NULL, 0, 0, BUI_TECH_UNLOCKED, 0, NULL, false},
+  {"Bins", "$100  1H", NULL, 0, 100, BUI_TECH_AVAILABLE, 0, "UNLOCK", false},
+};
+bui_tech_link links[] = {{0, 1}};            /* parent -> child: drawn as an elbow line */
+int asked = bui_tech_tree(ui, "tree", area, nodes, 2, links, 1, &view, NULL);
+if (asked >= 0) try_unlock(asked);           /* the game's rules */
+if (view.selected >= 0) show_details(view.selected);
+```
+
+- Node positions are box centres in tree units (one unit is one pixel at zoom 1). Boxes default to 120 x 40 units.
+- Clicking a node, pressing Enter on it, or moving the focus to it selects it (`view.selected`). Clicking empty canvas without dragging clears the selection.
+- A press that moves more than 4 pixels pans and does not select.
+- Everything is clipped to the canvas. Nodes outside it can't be hovered or clicked, and moving the focus to one pans it into view.
+- Text is drawn at a whole font pixel (`theme.pixel * zoom`, rounded down) and hidden when that falls below 1. The detail line is dropped when it no longer fits.
+- A disabled button (`button_disabled`) is still focusable and spoken, but pressing it does nothing.
+
+Spoken as: *"Bins, $100 1H. Item 2 of 5, tech"* and *"UNLOCK, Bins. Item 3 of 5, button"*.
+
+## Grids
+
+A grid lays out cells: squares, or hexagons in a honeycomb. Pointy-top hexagons sit in rows, every other row shifted half a cell. Flat-top hexagons sit in columns, every other column shifted down half a cell. Use it for inventories, palettes and boards.
+
+```c
+bui_grid_opts o = {0};
+o.shape = BUI_GRID_HEX_POINTY;   /* or BUI_GRID_SQUARE, BUI_GRID_HEX_FLAT */
+o.columns = 10, o.rows = 3;      /* count 0: columns x rows */
+o.cell = 40.0f, o.gap = 2.0f;    /* a pointy hexagon's width, flat side to flat side */
+o.selected = hotbar_slot;        /* lit as selected; -1 for none */
+o.spoken = slot_name;            /* what's said of a cell */
+o.draw_cell = draw_item;         /* the cell's contents, in its inscribed square */
+o.user = &inventory;
+o.hex_uv = atlas_hex, o.ring_uv = atlas_hex_ring;  /* optional masks in the UI texture */
+bui_grid_result r = bui_grid(ui, "backpack", bui_rect_make(x, y, x + 1, y + 1), &o);
+if (r.activated >= 0) pick_up(r.activated);        /* click, Enter, A */
+if (r.alt_activated >= 0) split(r.alt_activated);  /* right-click (bui_input.alt_clicked) */
+```
+
+- Each cell is an item of its own, with the id `"<id>#<n>"`, the role `slot` (or `o.role`) and the text from `o.spoken`. Its value is the same text, so a change to what's in a cell is spoken while the cell has the focus.
+- The arrow keys move between cells in two dimensions. Up or Down off the grid's edge moves on to the item before or after it. Down into a short last row goes to its last cell.
+- Clicks and hovering go by the cell's exact shape, so a click between hexagons hits nothing. `bui_grid_hit` does the same test for any point.
+- Without masks, hexagons are drawn from rectangles (`bui_hex_rects`). With `hex_uv` and `ring_uv`, each takes one textured rectangle.
+- `inert` draws the grid without declaring items: a hotbar shown during play, for example. `no_faces` leaves all the drawing to `draw_cell`.
+- In a scroll view, pass `area` already moved up by the offset. Cells not wholly in the view are not drawn.
+- `bui_grid_size`, `bui_grid_cell_rect` and `bui_grid_neighbor` give the layout to the game, for centring the grid or drawing a dragged item.
+
+The theme colours are `grid_cell`, `grid_ring`, `grid_selected`, `grid_selected_face` and `grid_hover`.
+
+Spoken as: *"Pickaxe. Item 4 of 40, slot"*.
+
 ## Custom widgets
 
 Any rectangle becomes an accessible item with `bui_declare`. Use it for screens with their own look: inventory grids, character pickers, shop rows.
