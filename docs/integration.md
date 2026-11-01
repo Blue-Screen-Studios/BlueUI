@@ -27,9 +27,10 @@ When BlueUI is not the top-level project, its demo and tests are not built. Set 
 ```cmake
 set(BLUEUI_SHARED OFF CACHE BOOL "" FORCE)      # link statically
 set(BLUEUI_WITH_FLITE OFF CACHE BOOL "" FORCE)  # no built-in voice
+set(BLUEUI_PROFILER OFF CACHE BOOL "" FORCE)    # compile BUI_PROFILE scopes out
 ```
 
-The `blueui` target carries its include directory and compile definitions. Include `<blueui/blueui.h>`, plus `<blueui/widgets.h>` for widgets.
+The `blueui` target carries its include directory and compile definitions. Include `<blueui/blueui.h>`, plus `<blueui/widgets.h>` for widgets and `<blueui/profiler.h>` for the [profiler](profiler.md). The `BUI_PROFILER` definition that `BLUEUI_PROFILER` sets is public, so it reaches every target that links `blueui`.
 
 ## Shared or static
 

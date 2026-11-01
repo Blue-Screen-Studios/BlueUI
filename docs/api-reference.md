@@ -1,9 +1,10 @@
 # API reference
 
-All public declarations are in two headers:
+All public declarations are in three headers:
 
 - `<blueui/blueui.h>`: the core.
 - `<blueui/widgets.h>`: themed widgets. It includes the core.
+- `<blueui/profiler.h>`: the frame profiler. It includes the core. Its functions take no context, except `bui_profiler`.
 
 Every function takes the context as its first argument unless noted. Strings passed in may be `NULL` where a field is optional; `NULL` is treated as empty.
 
@@ -23,6 +24,7 @@ Every function takes the context as its first argument unless noted. Strings pas
 - [Modals](#modals)
 - [Drawing and text](#drawing-and-text)
 - [Widgets](#widgets)
+- [Profiler](#profiler)
 
 ---
 
@@ -504,3 +506,43 @@ Declared in `<blueui/widgets.h>`. See [Widgets](widgets.md) for behaviour and ex
 | `bui_pick bui_file_picker_show(ui, id, area, picker, title)` | `BUI_PICK_OPEN` while choosing, then `BUI_PICK_CHOSEN` (the path in `picker->chosen`) or `BUI_PICK_CANCELLED`. |
 | `void bui_file_picker_free(picker)` | Frees its entries. |
 | `void bui_path_parent(path, out, size)` | A folder's parent; a root stays as it is. |
+
+---
+
+## Profiler
+
+See [Profiler](profiler.md).
+
+### Types
+
+| Type | Fields |
+|---|---|
+| `bui_prof_event` | `name`, `start`, `end` (ns, `bui_prof_now_ns`), `depth` |
+| `bui_prof_lane` | `thread`, `gpu`, `events`, `event_count` (events in start order) |
+| `bui_prof_frame` | `index`, `start`, `end` (ns), `gpu_ms` (-1: none), `lanes`, `lane_count` (`"Main"` first, the GPU's last) |
+| `bui_prof_gpu_span` | `name`, `start_ms`, `end_ms`, `depth` |
+| `bui_prof_step` | `BUI_PROF_PREV`, `BUI_PROF_NEXT`, `BUI_PROF_PREV_10`, `BUI_PROF_NEXT_10`, `BUI_PROF_SLOWEST_OLDER`, `BUI_PROF_SLOWEST_NEWER`, `BUI_PROF_LIVE` |
+
+### Functions
+
+| Function | Description |
+|---|---|
+| `void bui_prof_set_enabled(bool on)` | Turns recording on from the next frame (and returns the view to live) or off. Kept frames stay. |
+| `bool bui_prof_enabled(void)` | Whether it's recording. |
+| `void bui_prof_name_thread(const char* name)` | This thread's lane name (copied). |
+| `const char* bui_prof_intern(const char* name)` | A copy kept for good; equal text gives the same pointer. |
+| `uint64_t bui_prof_now_ns(void)` | The steady clock in nanoseconds. |
+| `bool bui_prof_begin(const char* name)` | Starts a task on this thread. Returns whether it's recorded; call `bui_prof_end` only if so. |
+| `void bui_prof_end(void)` | Ends this thread's innermost task. |
+| `void bui_prof_frame_begin(void)`, `void bui_prof_frame_end(void)` | Bracket the game's frame on the main thread. The end gathers every thread's tasks into a record. |
+| `uint64_t bui_prof_current_frame(void)` | The index of the frame being recorded. |
+| `void bui_prof_add_gpu(uint64_t frame, uint64_t start_ns, const bui_prof_gpu_span* spans, size_t count)` | Adds a GPU lane to a kept frame. Spans are in ms from `start_ns`. |
+| `size_t bui_prof_frame_count(void)`, `const bui_prof_frame* bui_prof_frame_at(size_t i)` | The kept frames, oldest first, at most `BUI_PROF_HISTORY` (240). Valid until the next frame end or `add_gpu`. |
+| `double bui_prof_frame_cpu_ms(const bui_prof_frame* f)` | The frame's main-thread time (inline). |
+| `void bui_prof_set_frozen(bool)`, `bool bui_prof_frozen(void)` | Frozen, no new frames are kept. |
+| `uint64_t bui_prof_dropped(void)` | Tasks lost to a full ring. |
+| `void bui_prof_step_view(bui_prof_step step)` | Moves the overlay's frame (freezing), or back to live. |
+| `const bui_prof_frame* bui_prof_view_frame(void)`, `bool bui_prof_view_live(void)` | The frame the overlay shows, and whether it's live. |
+| `void bui_profiler(bui_context* ui, bui_rect area)` | Draws the overlay over `area`. Declares no items. |
+
+Macros: `BUI_PROFILE(name)`, `BUI_PROFILE_DYN(name)` (C++, or C on GCC and Clang). Both do nothing when `BUI_PROFILER` is 0.

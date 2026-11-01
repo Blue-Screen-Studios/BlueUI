@@ -9,6 +9,7 @@ option(BLUEUI_WITH_FLITE "The voice built in: Flite (else lines handed over as t
 option(BLUEUI_SHARED "A shared library (libblueui.so), linked by the game at run time" ON)
 option(BLUEUI_BUILD_DEMO "The demo (SDL3: a window, its audio)" ${BLUEUI_TOP_LEVEL})
 option(BLUEUI_BUILD_TESTS "The tests (ctest)" ${BLUEUI_TOP_LEVEL})
+option(BLUEUI_PROFILER "The profiler's scopes in the game (BUI_PROFILE; off: compiled out)" ON)
 
 if(BLUEUI_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -64,7 +65,8 @@ if(BLUEUI_WITH_FLITE)
 endif()
 
 # ------------------------------------------------------------ the library
-add_library(blueui ${BLUEUI_LINKAGE} src/context.c src/voice.c src/font.c src/widgets.c src/feedback.c src/modal.c src/techtree.c src/surface.c src/grid.c src/files.c)
+add_library(blueui ${BLUEUI_LINKAGE} src/context.c src/voice.c src/font.c src/widgets.c src/feedback.c src/modal.c src/techtree.c src/surface.c src/grid.c src/files.c
+  src/profiler.c src/profilerview.c)
 target_include_directories(blueui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set_target_properties(blueui PROPERTIES
   C_STANDARD 11 C_STANDARD_REQUIRED ON
@@ -73,6 +75,13 @@ set_target_properties(blueui PROPERTIES
 target_compile_definitions(blueui PRIVATE BLUEUI_BUILDING)
 if(BLUEUI_SHARED)
   target_compile_definitions(blueui INTERFACE BLUEUI_DLL)
+endif()
+# The profiler's scopes, for whoever includes blueui/profiler.h (the
+# functions are built either way).
+if(BLUEUI_PROFILER)
+  target_compile_definitions(blueui PUBLIC BUI_PROFILER=1)
+else()
+  target_compile_definitions(blueui PUBLIC BUI_PROFILER=0)
 endif()
 target_link_libraries(blueui PRIVATE Threads::Threads)
 if(UNIX)

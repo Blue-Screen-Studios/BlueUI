@@ -23,6 +23,7 @@ BlueUI does not own a window, a renderer or an audio device. Each frame the game
 - **Sounds and rumble.** Moving, pressing, toggling, changing values, switching tabs and pressing disabled items can each play a sound and, on a controller, a rumble. The theme picks built-in packs for each (None, Soft or Crisp). Sounds are generated in code; rumbles are handed to the game as timings to play on its own motors.
 - **Modals.** Windows that must be answered first, spoken and navigable like everything else. BlueUI offers narration when a game starts, and reports a controller being unplugged. Games can open their own.
 - **Themed widgets.** Includes buttons, tab bars, toggles, choices, sliders, stepped sliders, foldouts, rebinding capture and scroll views. Each game passes one `bui_theme` (colours, sizes, focus outline) and every widget follows it. The default theme is blue.
+- **Frame profiler.** Per-thread task timing, an optional GPU lane fed from the game's timestamps, and an overlay with a frame graph, timeline and top tasks. Compiles out entirely.
 - **Testable.** Menus can be tested by what is said and focused, not by pixel positions. Text-only mode makes tests deterministic.
 - **C11 with a small surface.** A single shared library exporting only `bui_*` symbols, and headers that work from C and C++.
 
@@ -92,6 +93,7 @@ ctest --test-dir build        # run the test suite
 | `BLUEUI_SHARED` | `ON` | Build `libblueui.so`. Turn off for a static library. |
 | `BLUEUI_BUILD_DEMO` | `ON` when top level | Build `blueui_demo`. Requires SDL3. |
 | `BLUEUI_BUILD_TESTS` | `ON` when top level | Build `blueui_tests` and register it with CTest. |
+| `BLUEUI_PROFILER` | `ON` | Keep `BUI_PROFILE` scopes in code that links `blueui`. When off, they compile to nothing. |
 
 To use BlueUI in a game, add it with `add_subdirectory` or `FetchContent` and link the `blueui` target. See [Integration](docs/integration.md).
 
@@ -105,6 +107,7 @@ To use BlueUI in a game, add it with `add_subdirectory` or `FetchContent` and li
 | [Speech and audio](docs/speech-and-audio.md) | The voice, the audio queue, the WAV format, priorities, text-only mode. |
 | [Feedback](docs/feedback.md) | UI events, the sound and rumble packs, playing rumble timings. |
 | [Modals](docs/modals.md) | The game's own modals, the narration offer, controller notices. |
+| [Profiler](docs/profiler.md) | Recording tasks on any thread, the GPU lane, the overlay, stepping through frames. |
 | [Integration](docs/integration.md) | CMake, shared and static builds, shipping, C++ use, testing a game's menus. |
 | [API reference](docs/api-reference.md) | Every type and function. |
 
@@ -117,6 +120,7 @@ BlueUI is developed and tested on Linux with GCC. The library code is portable C
 ```
 include/blueui/blueui.h    Core: context, input, state, items, speech, font
 include/blueui/widgets.h   Themed widgets built on the core
+include/blueui/profiler.h  Frame profiler: scopes, frame records, the overlay
 src/                       Implementation
 tests/tests.c              Test suite (CTest)
 demo/main.c                Feature tour (SDL3): every widget, speech, rebinding and themes

@@ -101,3 +101,5 @@ BlueUI allocates as the frame's content grows and reuses the memory afterwards. 
 ## Threading
 
 A context is not thread-safe. Call every function for a context from the same thread, normally the game's main thread. Speech synthesis runs on a background thread owned by the context. Its results are collected by `bui_next_audio` on the calling thread. Separate contexts are independent.
+
+The [profiler](profiler.md) is the exception: it belongs to no context, and `BUI_PROFILE` scopes (with `bui_prof_begin`, `bui_prof_end` and `bui_prof_name_thread`) can be used from any thread. Frame begin and end, `bui_prof_add_gpu`, reading the kept frames, stepping the view and `bui_profiler` belong to the game's main thread.
